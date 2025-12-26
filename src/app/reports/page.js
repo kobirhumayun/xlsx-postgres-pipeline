@@ -10,6 +10,7 @@ const emptyForm = {
 export default function ReportsPage() {
   const [relationships, setRelationships] = useState([]);
   const [rows, setRows] = useState([]);
+  const [exporting, setExporting] = useState(false);
   const [status, setStatus] = useState({ type: "idle", message: "" });
   const [loading, setLoading] = useState(false);
   const [formState, setFormState] = useState(emptyForm);
@@ -99,6 +100,52 @@ export default function ReportsPage() {
     }
   };
 
+  const handleExport = async () => {
+    if (!formState.relationshipId) {
+      setStatus({ type: "error", message: "Select a relationship first." });
+      return;
+    }
+    setExporting(true);
+    setStatus({ type: "idle", message: "" });
+    try {
+      const response = await fetch("/api/reports/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reportType: "missing_related",
+          params: {
+            relationshipId: Number(formState.relationshipId),
+            limit: Number(formState.limit) || 200,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json();
+        throw new Error(payload.error ?? "Failed to export report.");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "missing-related-report.xlsx";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setStatus({ type: "success", message: "Export started." });
+    } catch (error) {
+      console.error("Failed to export report", error);
+      setStatus({
+        type: "error",
+        message: error.message || "Failed to export report.",
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 px-6 py-10 text-zinc-900">
       <main className="mx-auto flex w-full max-w-5xl flex-col gap-8">
@@ -159,6 +206,14 @@ export default function ReportsPage() {
                 disabled={loading}
               >
                 {loading ? "Running..." : "Run report"}
+              </button>
+              <button
+                className="rounded-full border border-zinc-200 px-5 py-2 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+                type="button"
+                onClick={handleExport}
+                disabled={exporting}
+              >
+                {exporting ? "Exporting..." : "Export to Excel"}
               </button>
               {status.message && (
                 <span
