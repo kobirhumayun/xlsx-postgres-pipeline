@@ -85,5 +85,6 @@ model CuratedRow {
   importRun       ImportRun? @relation(fields: [lastImportRunId], references: [id])
 
   @@index([datasetId, businessKey])
+  @@unique([datasetId, businessKey])
   @@map("curated_rows")
 }
