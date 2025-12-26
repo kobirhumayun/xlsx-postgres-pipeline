@@ -36,6 +36,12 @@ export default function Home() {
                 "Run missing-related-data checks and export results to Excel.",
               href: "/reports",
             },
+            {
+              title: "Relationships",
+              description:
+                "Define how datasets join together for relational reports.",
+              href: "/relationships",
+            },
           ].map((card) => (
             <a
               key={card.title}
