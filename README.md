@@ -1,3 +1,16 @@
+# XLSX Postgres Pipeline
+
+## Technical plan (pre-coding)
+- **ORM/DB approach:** Prisma ORM. It provides a stable JavaScript client, schema migrations, and easy JSON column support without introducing TypeScript.
+- **Schema decisions:** Use the minimum tables from `architecture/06_DATABASE_SCHEMA.md` with `datasets` as the registry and JSONB columns for `pk_fields_jsonb`, `mapping_jsonb`, and normalized row storage.
+- **Curated storage:** Implement a single `curated_rows` table with `normalized_jsonb` plus optional `typed_columns` JSON for common fields across datasets.
+- **Upserts & hashes:** Compute a deterministic `business_key` from dataset primary key fields and a `row_hash` from canonicalized raw JSON. Use upserts on `dataset_id + business_key`; if the hash changes, update both raw and curated records.
+
+## ORM choice (decision)
+This project uses **Prisma ORM** as the single DB access layer, per the architecture decision requirement. The Prisma client keeps DB access centralized in JavaScript, supports JSONB fields, and integrates cleanly with Next.js server routes.
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
 ## Getting Started
