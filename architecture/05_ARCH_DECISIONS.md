@@ -1,19 +1,17 @@
 # Architecture Decisions (Must decide before coding)
 
-## Next.js setup note
-The project prompt contains conflicting guidance:
-- Language: JavaScript
-- Also mentions "Next.js App Router, TypeScript"
+## Language decision (locked)
+- Implementation language is **JavaScript-only**.
+- Do NOT introduce TypeScript files, TS config, or TS build steps.
+- Use **JSDoc** for type-like documentation where helpful.
+- Use runtime validation for inputs (e.g., schemas) in server routes.
 
-Decision rule:
-- Prefer JavaScript for implementation.
-- Use JSDoc type annotations + runtime validation where appropriate.
-- Include eslint + prettier. (Typecheck can be omitted unless TS is introduced.)
+Rationale:
+- The project non-negotiable requirement is JavaScript.
+- JSDoc + runtime validation provides sufficient safety without TS overhead.
 
 ## ORM / DB access (choose ONE)
 Pick exactly one approach and implement fully:
 1) Prisma ORM (recommended)
-2) Drizzle ORM
-3) node-postgres + SQL files
 
 Must justify choice in README.
