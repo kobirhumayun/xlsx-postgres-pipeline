@@ -10,6 +10,8 @@ const emptyForm = {
   mapping: "{\n  \"ColumnName\": \"field_name\"\n}",
 };
 
+import { fetchJson } from "@/lib/api-client";
+
 export default function DatasetsPage() {
   const [datasets, setDatasets] = useState([]);
   const [formState, setFormState] = useState(emptyForm);
@@ -28,8 +30,7 @@ export default function DatasetsPage() {
     const loadDatasets = async () => {
       setLoading(true);
       try {
-        const response = await fetch("/api/datasets");
-        const data = await response.json();
+        const data = await fetchJson("/api/datasets");
         if (isMounted) {
           setDatasets(data.datasets ?? []);
         }
@@ -72,9 +73,8 @@ export default function DatasetsPage() {
 
     setLoading(true);
     try {
-      const response = await fetch("/api/datasets", {
+      const data = await fetchJson("/api/datasets", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           slug: formState.slug,
           name: formState.name,
@@ -84,12 +84,6 @@ export default function DatasetsPage() {
         }),
       });
 
-      if (!response.ok) {
-        const errorPayload = await response.json();
-        throw new Error(errorPayload.error ?? "Failed to save dataset");
-      }
-
-      const data = await response.json();
       setDatasets((prev) => {
         const next = prev.filter((item) => item.slug !== data.dataset.slug);
         return [data.dataset, ...next];
@@ -197,11 +191,10 @@ export default function DatasetsPage() {
               </button>
               {status.message && (
                 <span
-                  className={`text-sm ${
-                    status.type === "error"
+                  className={`text-sm ${status.type === "error"
                       ? "text-red-600"
                       : "text-emerald-600"
-                  }`}
+                    }`}
                 >
                   {status.message}
                 </span>

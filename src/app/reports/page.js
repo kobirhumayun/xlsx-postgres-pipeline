@@ -7,6 +7,8 @@ const emptyForm = {
   limit: "200",
 };
 
+import { fetchJson } from "@/lib/api-client";
+
 export default function ReportsPage() {
   const [relationships, setRelationships] = useState([]);
   const [rows, setRows] = useState([]);
@@ -29,8 +31,7 @@ export default function ReportsPage() {
     const loadRelationships = async () => {
       setLoading(true);
       try {
-        const response = await fetch("/api/relationships");
-        const data = await response.json();
+        const data = await fetchJson("/api/relationships");
         if (isMounted) {
           setRelationships(data.relationships ?? []);
         }
@@ -66,9 +67,8 @@ export default function ReportsPage() {
     setRows([]);
 
     try {
-      const response = await fetch("/api/reports/run", {
+      const payload = await fetchJson("/api/reports/run", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reportType: "missing_related",
           params: {
@@ -77,12 +77,6 @@ export default function ReportsPage() {
           },
         }),
       });
-
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Failed to run report.");
-      }
 
       setRows(payload.rows ?? []);
       setStatus({
@@ -121,8 +115,12 @@ export default function ReportsPage() {
       });
 
       if (!response.ok) {
-        const payload = await response.json();
-        throw new Error(payload.error ?? "Failed to export report.");
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          const payload = await response.json();
+          throw new Error(payload.error ?? "Failed to export report.");
+        }
+        throw new Error(`Failed to export report: ${response.status} ${response.statusText}`);
       }
 
       const blob = await response.blob();
@@ -217,11 +215,10 @@ export default function ReportsPage() {
               </button>
               {status.message && (
                 <span
-                  className={`text-sm ${
-                    status.type === "error"
+                  className={`text-sm ${status.type === "error"
                       ? "text-red-600"
                       : "text-emerald-600"
-                  }`}
+                    }`}
                 >
                   {status.message}
                 </span>

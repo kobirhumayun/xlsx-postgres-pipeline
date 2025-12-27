@@ -9,6 +9,8 @@ const emptyForm = {
   joinMapping: "{\n  \"left_field\": \"right_field\"\n}",
 };
 
+import { fetchJson } from "@/lib/api-client";
+
 export default function RelationshipsPage() {
   const [datasets, setDatasets] = useState([]);
   const [relationships, setRelationships] = useState([]);
@@ -26,12 +28,10 @@ export default function RelationshipsPage() {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [datasetsResponse, relationshipsResponse] = await Promise.all([
-          fetch("/api/datasets"),
-          fetch("/api/relationships"),
+        const [datasetsPayload, relationshipsPayload] = await Promise.all([
+          fetchJson("/api/datasets"),
+          fetchJson("/api/relationships"),
         ]);
-        const datasetsPayload = await datasetsResponse.json();
-        const relationshipsPayload = await relationshipsResponse.json();
         if (isMounted) {
           setDatasets(datasetsPayload.datasets ?? []);
           setRelationships(relationshipsPayload.relationships ?? []);
@@ -77,9 +77,8 @@ export default function RelationshipsPage() {
 
     setLoading(true);
     try {
-      const response = await fetch("/api/relationships", {
+      const data = await fetchJson("/api/relationships", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: formState.name,
           leftDatasetId: Number(formState.leftDatasetId),
@@ -88,12 +87,6 @@ export default function RelationshipsPage() {
         }),
       });
 
-      if (!response.ok) {
-        const errorPayload = await response.json();
-        throw new Error(errorPayload.error ?? "Failed to save relationship");
-      }
-
-      const data = await response.json();
       setRelationships((prev) => [data.relationship, ...prev]);
       setFormState(emptyForm);
       setStatus({ type: "success", message: "Relationship saved." });
@@ -198,11 +191,10 @@ export default function RelationshipsPage() {
               </button>
               {status.message && (
                 <span
-                  className={`text-sm ${
-                    status.type === "error"
+                  className={`text-sm ${status.type === "error"
                       ? "text-red-600"
                       : "text-emerald-600"
-                  }`}
+                    }`}
                 >
                   {status.message}
                 </span>

@@ -7,6 +7,8 @@ const emptyForm = {
   sheetName: "",
 };
 
+import { fetchJson } from "@/lib/api-client";
+
 export default function ImportPage() {
   const [datasets, setDatasets] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -26,8 +28,7 @@ export default function ImportPage() {
     const loadDatasets = async () => {
       setLoading(true);
       try {
-        const response = await fetch("/api/datasets");
-        const data = await response.json();
+        const data = await fetchJson("/api/datasets");
         if (isMounted) {
           setDatasets(data.datasets ?? []);
         }
@@ -78,15 +79,10 @@ export default function ImportPage() {
       payload.append("sheetName", formState.sheetName);
       payload.append("file", file);
 
-      const response = await fetch("/api/import", {
+      const data = await fetchJson("/api/import", {
         method: "POST",
         body: payload,
       });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error ?? "Failed to import file.");
-      }
 
       setSummary(data.summary);
       setErrors(data.errors ?? []);
@@ -172,11 +168,10 @@ export default function ImportPage() {
               </button>
               {status.message && (
                 <span
-                  className={`text-sm ${
-                    status.type === "error"
+                  className={`text-sm ${status.type === "error"
                       ? "text-red-600"
                       : "text-emerald-600"
-                  }`}
+                    }`}
                 >
                   {status.message}
                 </span>
