@@ -12,7 +12,7 @@ services:
 
   db:
     image: postgres:16
-    profiles: ["localdb"]
+    profiles: [ "localdb" ]
     environment:
       POSTGRES_DB: xlsx_pipeline
       POSTGRES_USER: postgres
@@ -21,6 +21,17 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    profiles: [ "tools" ]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
 
 volumes:
   postgres_data:
