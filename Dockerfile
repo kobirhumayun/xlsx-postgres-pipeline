@@ -11,7 +11,7 @@ FROM deps AS dev
 COPY . .
 ENV NODE_ENV=development
 EXPOSE 3000
-CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]
+CMD ["sh", "-c", "npx prisma db push && npm run dev -- --hostname 0.0.0.0 --port 3000"]
 
 FROM deps AS builder
 COPY . .
@@ -23,5 +23,6 @@ ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/prisma ./prisma
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "npx prisma db push && node server.js"]
