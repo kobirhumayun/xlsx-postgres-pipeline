@@ -1,49 +1,94 @@
 # XLSX Postgres Pipeline
 
-## Technical plan (pre-coding)
-- **ORM/DB approach:** Prisma ORM. It provides a stable JavaScript client, schema migrations, and easy JSON column support without introducing TypeScript.
-- **Schema decisions:** Use the minimum tables from `architecture/06_DATABASE_SCHEMA.md` with `datasets` as the registry and JSONB columns for `pk_fields_jsonb`, `mapping_jsonb`, and normalized row storage.
-- **Curated storage:** Implement a single `curated_rows` table with `normalized_jsonb` plus optional `typed_columns` JSON for common fields across datasets.
-- **Upserts & hashes:** Compute a deterministic `business_key` from dataset primary key fields and a `row_hash` from canonicalized raw JSON. Use upserts on `dataset_id + business_key`; if the hash changes, update both raw and curated records.
+A Next.js application for importing Excel files, mapping them to datasets, and normalizing data into PostgreSQL.
 
-## ORM choice (decision)
-This project uses **Prisma ORM** as the single DB access layer, per the architecture decision requirement. The Prisma client keeps DB access centralized in JavaScript, supports JSONB fields, and integrates cleanly with Next.js server routes.
-
----
-
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+## Features
+- **Prisma ORM**: Single DB access layer with support for JSONB fields.
+- **Dynamic Mapping**: Map Excel columns to dataset fields.
+- **Reporting**: Identify missing relationships between datasets.
+- **Dockerized**: specific setups for Development and Production.
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+- Docker & Docker Compose
+- Node.js (optional, for local development outside Docker)
 
+### Running with Docker
+
+This project uses Docker Compose overrides to manage environments. Explicitly verify the configuration using `-f` flags.
+
+#### 1. Development Environment
+(Hot reloading enabled, unoptimized build)
+
+**Scenario A: With Local Database (Recommended)**
+Starts the App and a local PostgreSQL container.
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile localdb up --build
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+**Scenario B: With External Database**
+Starts the App only (connects to DB defined in `.env`).
+```bash
+# Ensure DATABASE_URL in .env points to your external DB
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+#### 2. Production Environment
+(Optimized build, no hot reloading)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Scenario A: With Local Database**
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile localdb up --build -d
+```
 
-## Learn More
+**Scenario B: With External Database**
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+```
 
-To learn more about Next.js, take a look at the following resources:
+#### 3. Optional Tools (pgAdmin)
+To add pgAdmin to any of the above commands, add the `--profile tools` flag.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Example (Dev + Local DB + pgAdmin):**
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile localdb --profile tools up --build
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **pgAdmin URL**: [http://localhost:5050](http://localhost:5050)
+- **Login**: `admin@admin.com` / `admin` (or checked in `.env`)
 
-## Deploy on Vercel
+### Database Initialization
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The project is configured to **automatically initialize the database schema** every time the container starts.
+- It runs `npx prisma db push` before starting the application.
+- This ensures tables exist even after a fresh Docker build or volume reset.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Development
+
+If you want to run `next dev` locally (outside Docker) while using the Docker database:
+
+1.  Start only the database:
+    ```bash
+    docker compose --profile localdb up db -d
+    ```
+2.  Install dependencies:
+    ```bash
+    npm install
+    ```
+3.  Generate Prisma client:
+    ```bash
+    npx prisma generate
+    ```
+4.  Run the app:
+    ```bash
+    npm run dev
+    ```
+
+## Architecture
+
+- **Database**: PostgreSQL 16
+- **ORM**: Prisma
+- **Framework**: Next.js 16 (Turbopack)
+- **Styling**: Tailwind CSS / Shadcn UI
+
