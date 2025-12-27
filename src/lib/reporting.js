@@ -14,14 +14,14 @@ export const buildMissingRelatedQuery = (relationship, limit = 200) => {
   const query = Prisma.sql`
     SELECT
       l.id,
-      l.business_key AS "businessKey",
-      l.normalized AS "normalized"
+      l."businessKey",
+      l."normalized"
     FROM curated_rows l
-    WHERE l.dataset_id = ${relationship.leftDatasetId}
+    WHERE l."datasetId" = ${relationship.leftDatasetId}
       AND NOT EXISTS (
         SELECT 1
         FROM curated_rows r
-        WHERE r.dataset_id = ${relationship.rightDatasetId}
+        WHERE r."datasetId" = ${relationship.rightDatasetId}
           AND ${Prisma.join(conditions, " AND ")}
       )
     LIMIT ${limit};
