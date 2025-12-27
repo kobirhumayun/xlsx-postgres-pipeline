@@ -1,0 +1,15 @@
+services:
+  app:
+    build:
+      context: .
+      target: dev
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/xlsx_pipeline
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - db
+
+  db:
+    profiles: []
