@@ -4,6 +4,8 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json package-lock.json ./
 RUN npm ci
+COPY prisma ./prisma
+RUN npx prisma generate
 
 FROM deps AS dev
 COPY . .
