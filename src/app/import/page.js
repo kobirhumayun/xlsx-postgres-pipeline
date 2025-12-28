@@ -26,6 +26,46 @@ export default function ImportPage() {
   // New state for tabs and flexible import
   const [mode, setMode] = useState("standard"); // 'standard' | 'flexible'
   const [flexibleFormState, setFlexibleFormState] = useState(emptyFlexibleForm);
+  const [dbList, setDbList] = useState([]);
+  const [tableList, setTableList] = useState([]);
+
+  // Load databases on mount
+  useEffect(() => {
+    fetchJson("/api/structure").then(data => {
+      if (data.items) setDbList(data.items);
+    }).catch(console.error);
+  }, []);
+
+  // Load tables when DB changes
+  useEffect(() => {
+    // If no DB selected, maybe fetch default DB tables?
+    // Or wait for user to select (or default empty string means default DB in our API?)
+    // Let's fetch default tables if dbName is empty, or specific if selected.
+    const dbToCheck = flexibleFormState.databaseName;
+    const url = dbToCheck ? `/api/structure?database=${dbToCheck}` : '/api/structure'; // if empty, list DBs again?
+    // Wait. if dbName is empty, we want tables of DEFAULT db?
+    // My API: if no param -> list DBs.
+    // So to list tables of default DB, we need to pass param? Or change API?
+    // Let's assume user MUST select DB, or we provide a way to say "Default".
+
+    // Actually, let's fetch tables for 'postgres' or whatever default is if empty? 
+    // Better: When user selects a DB, fetch tables.
+    // Also, initial load: fetch tables for valid default?
+    // Let's just fetch tables when databaseName changes, if it has a value.
+
+    if (flexibleFormState.databaseName) {
+      fetchJson(`/api/structure?database=${flexibleFormState.databaseName}`).then(data => {
+        if (data.type === 'tables') setTableList(data.items);
+      }).catch(console.error);
+    } else {
+      // Maybe user wants default DB. We don't know name of default DB easily on client without ask.
+      // Let's try fetching tables for 'postgres' or just don't show list until DB picked.
+      // Or simple hack: fetch tables with a special flag? 
+      // Let's update API to handle `?database=default`? 
+      // For now, I'll rely on user picking from DB list.
+      setTableList([]);
+    }
+  }, [flexibleFormState.databaseName]);
 
   const datasetOptions = useMemo(
     () => datasets.map((dataset) => ({ id: dataset.id, name: dataset.name })),
@@ -143,8 +183,8 @@ export default function ImportPage() {
           <button
             onClick={() => { setMode("standard"); setStatus({ type: 'idle', message: '' }); setSummary(null); setErrors([]); }}
             className={`pb-2 text-sm font-medium transition ${mode === "standard"
-                ? "border-b-2 border-zinc-900 text-zinc-900"
-                : "text-zinc-500 hover:text-zinc-900"
+              ? "border-b-2 border-zinc-900 text-zinc-900"
+              : "text-zinc-500 hover:text-zinc-900"
               }`}
           >
             Standard Import
@@ -152,8 +192,8 @@ export default function ImportPage() {
           <button
             onClick={() => { setMode("flexible"); setStatus({ type: 'idle', message: '' }); setSummary(null); setErrors([]); }}
             className={`pb-2 text-sm font-medium transition ${mode === "flexible"
-                ? "border-b-2 border-zinc-900 text-zinc-900"
-                : "text-zinc-500 hover:text-zinc-900"
+              ? "border-b-2 border-zinc-900 text-zinc-900"
+              : "text-zinc-500 hover:text-zinc-900"
               }`}
           >
             Flexible Import
@@ -206,15 +246,19 @@ export default function ImportPage() {
             ) : (
               <>
                 <label className="flex flex-col gap-2 text-sm font-medium">
-                  Database Name (optional)
-                  <input
+                  Database
+                  <select
                     className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
                     name="databaseName"
                     value={flexibleFormState.databaseName}
                     onChange={handleFlexibleChange}
-                    placeholder="default"
-                  />
-                  <span className="text-xs text-zinc-500">Leave empty to use default database.</span>
+                  >
+                    <option value="">-- Select Database --</option>
+                    {dbList.map(db => (
+                      <option key={db} value={db}>{db}</option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-zinc-500">Select database to populate table list.</span>
                 </label>
                 <label className="flex flex-col gap-2 text-sm font-medium">
                   Table Name
@@ -223,9 +267,15 @@ export default function ImportPage() {
                     name="tableName"
                     value={flexibleFormState.tableName}
                     onChange={handleFlexibleChange}
+                    list="table-options"
                     placeholder="public.my_table"
                     required
                   />
+                  <datalist id="table-options">
+                    {tableList.map(t => (
+                      <option key={t.fullName} value={t.fullName} />
+                    ))}
+                  </datalist>
                 </label>
                 <label className="flex flex-col gap-2 text-sm font-medium">
                   Sheet name (optional)
