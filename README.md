@@ -5,6 +5,9 @@ A Next.js application for importing Excel files, mapping them to datasets, and n
 ## Features
 - **Prisma ORM**: Single DB access layer with support for JSONB fields.
 - **Dynamic Mapping**: Map Excel columns to dataset fields.
+- **Flexible Import**: Import Excel data into *any* PostgreSQL table across databases.
+- **Custom Queries**: Execute raw SQL and export results to Excel.
+- **Schema Discovery**: Explore databases and tables within the application.
 - **Reporting**: Identify missing relationships between datasets.
 - **Dockerized**: specific setups for Development and Production.
 

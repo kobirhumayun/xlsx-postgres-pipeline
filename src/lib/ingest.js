@@ -2,7 +2,7 @@ import crypto from "crypto";
 
 const EXCEL_EPOCH = Date.UTC(1899, 11, 30);
 
-const toTrimmedString = (value) => {
+export const toTrimmedString = (value) => {
   if (value === null || value === undefined) {
     return "";
   }
@@ -14,7 +14,7 @@ const normalizeKey = (value) => {
   return trimmed.length ? trimmed : null;
 };
 
-const excelDateToISO = (value) => {
+export const excelDateToISO = (value) => {
   if (typeof value !== "number" || Number.isNaN(value)) {
     return null;
   }

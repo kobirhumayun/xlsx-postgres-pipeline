@@ -1,13 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { fetchJson } from "@/lib/api-client";
 
 const emptyForm = {
   datasetId: "",
   sheetName: "",
 };
 
-import { fetchJson } from "@/lib/api-client";
+const emptyFlexibleForm = {
+  databaseName: "",
+  tableName: "",
+  sheetName: "",
+};
 
 export default function ImportPage() {
   const [datasets, setDatasets] = useState([]);
@@ -17,6 +22,50 @@ export default function ImportPage() {
   const [status, setStatus] = useState({ type: "idle", message: "" });
   const [loading, setLoading] = useState(false);
   const [formState, setFormState] = useState(emptyForm);
+
+  // New state for tabs and flexible import
+  const [mode, setMode] = useState("standard"); // 'standard' | 'flexible'
+  const [flexibleFormState, setFlexibleFormState] = useState(emptyFlexibleForm);
+  const [dbList, setDbList] = useState([]);
+  const [tableList, setTableList] = useState([]);
+
+  // Load databases on mount
+  useEffect(() => {
+    fetchJson("/api/structure").then(data => {
+      if (data.items) setDbList(data.items);
+    }).catch(console.error);
+  }, []);
+
+  // Load tables when DB changes
+  useEffect(() => {
+    // If no DB selected, maybe fetch default DB tables?
+    // Or wait for user to select (or default empty string means default DB in our API?)
+    // Let's fetch default tables if dbName is empty, or specific if selected.
+    const dbToCheck = flexibleFormState.databaseName;
+    const url = dbToCheck ? `/api/structure?database=${dbToCheck}` : '/api/structure'; // if empty, list DBs again?
+    // Wait. if dbName is empty, we want tables of DEFAULT db?
+    // My API: if no param -> list DBs.
+    // So to list tables of default DB, we need to pass param? Or change API?
+    // Let's assume user MUST select DB, or we provide a way to say "Default".
+
+    // Actually, let's fetch tables for 'postgres' or whatever default is if empty? 
+    // Better: When user selects a DB, fetch tables.
+    // Also, initial load: fetch tables for valid default?
+    // Let's just fetch tables when databaseName changes, if it has a value.
+
+    if (flexibleFormState.databaseName) {
+      fetchJson(`/api/structure?database=${flexibleFormState.databaseName}`).then(data => {
+        if (data.type === 'tables') setTableList(data.items);
+      }).catch(console.error);
+    } else {
+      // Maybe user wants default DB. We don't know name of default DB easily on client without ask.
+      // Let's try fetching tables for 'postgres' or just don't show list until DB picked.
+      // Or simple hack: fetch tables with a special flag? 
+      // Let's update API to handle `?database=default`? 
+      // For now, I'll rely on user picking from DB list.
+      setTableList([]);
+    }
+  }, [flexibleFormState.databaseName]);
 
   const datasetOptions = useMemo(
     () => datasets.map((dataset) => ({ id: dataset.id, name: dataset.name })),
@@ -57,6 +106,11 @@ export default function ImportPage() {
     setFormState((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleFlexibleChange = (event) => {
+    const { name, value } = event.target;
+    setFlexibleFormState((prev) => ({ ...prev, [name]: value }));
+  };
+
   const handleFileChange = (event) => {
     const nextFile = event.target.files?.[0] ?? null;
     setFile(nextFile);
@@ -75,11 +129,22 @@ export default function ImportPage() {
 
     try {
       const payload = new FormData();
-      payload.append("datasetId", formState.datasetId);
-      payload.append("sheetName", formState.sheetName);
+
+      let url = "/api/import";
+
+      if (mode === "standard") {
+        payload.append("datasetId", formState.datasetId);
+        payload.append("sheetName", formState.sheetName);
+      } else {
+        url = "/api/import/flexible";
+        if (flexibleFormState.databaseName) payload.append("databaseName", flexibleFormState.databaseName);
+        payload.append("tableName", flexibleFormState.tableName);
+        payload.append("sheetName", flexibleFormState.sheetName);
+      }
+
       payload.append("file", file);
 
-      const data = await fetchJson("/api/import", {
+      const data = await fetchJson(url, {
         method: "POST",
         body: payload,
       });
@@ -113,41 +178,118 @@ export default function ImportPage() {
           </p>
         </header>
 
+        {/* Tabs */}
+        <div className="flex gap-4 border-b border-zinc-200">
+          <button
+            onClick={() => { setMode("standard"); setStatus({ type: 'idle', message: '' }); setSummary(null); setErrors([]); }}
+            className={`pb-2 text-sm font-medium transition ${mode === "standard"
+              ? "border-b-2 border-zinc-900 text-zinc-900"
+              : "text-zinc-500 hover:text-zinc-900"
+              }`}
+          >
+            Standard Import
+          </button>
+          <button
+            onClick={() => { setMode("flexible"); setStatus({ type: 'idle', message: '' }); setSummary(null); setErrors([]); }}
+            className={`pb-2 text-sm font-medium transition ${mode === "flexible"
+              ? "border-b-2 border-zinc-900 text-zinc-900"
+              : "text-zinc-500 hover:text-zinc-900"
+              }`}
+          >
+            Flexible Import
+          </button>
+        </div>
+
         <section className="grid gap-6 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
           <div>
-            <h2 className="text-lg font-semibold">Run an import</h2>
+            <h2 className="text-lg font-semibold">
+              {mode === "standard" ? "Run a Standard Import" : "Run a Flexible Import"}
+            </h2>
             <p className="text-sm text-zinc-500">
-              Select a dataset definition and choose the worksheet to ingest.
+              {mode === "standard"
+                ? "Select a dataset definition and choose the worksheet to ingest."
+                : "Import into any database table. Ensure columns match the Excel headers."}
             </p>
           </div>
           <form className="grid gap-4" onSubmit={handleSubmit}>
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              Dataset
-              <select
-                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                name="datasetId"
-                value={formState.datasetId}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Select dataset</option>
-                {datasetOptions.map((dataset) => (
-                  <option key={dataset.id} value={dataset.id}>
-                    {dataset.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              Sheet name (optional)
-              <input
-                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                name="sheetName"
-                value={formState.sheetName}
-                onChange={handleChange}
-                placeholder="Sheet1"
-              />
-            </label>
+
+            {mode === "standard" ? (
+              <>
+                <label className="flex flex-col gap-2 text-sm font-medium">
+                  Dataset
+                  <select
+                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                    name="datasetId"
+                    value={formState.datasetId}
+                    onChange={handleChange}
+                    required
+                  >
+                    <option value="">Select dataset</option>
+                    {datasetOptions.map((dataset) => (
+                      <option key={dataset.id} value={dataset.id}>
+                        {dataset.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-2 text-sm font-medium">
+                  Sheet name (optional)
+                  <input
+                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                    name="sheetName"
+                    value={formState.sheetName}
+                    onChange={handleChange}
+                    placeholder="Sheet1"
+                  />
+                </label>
+              </>
+            ) : (
+              <>
+                <label className="flex flex-col gap-2 text-sm font-medium">
+                  Database
+                  <select
+                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                    name="databaseName"
+                    value={flexibleFormState.databaseName}
+                    onChange={handleFlexibleChange}
+                  >
+                    <option value="">-- Select Database --</option>
+                    {dbList.map(db => (
+                      <option key={db} value={db}>{db}</option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-zinc-500">Select database to populate table list.</span>
+                </label>
+                <label className="flex flex-col gap-2 text-sm font-medium">
+                  Table Name
+                  <input
+                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                    name="tableName"
+                    value={flexibleFormState.tableName}
+                    onChange={handleFlexibleChange}
+                    list="table-options"
+                    placeholder="public.my_table"
+                    required
+                  />
+                  <datalist id="table-options">
+                    {tableList.map(t => (
+                      <option key={t.fullName} value={t.fullName} />
+                    ))}
+                  </datalist>
+                </label>
+                <label className="flex flex-col gap-2 text-sm font-medium">
+                  Sheet name (optional)
+                  <input
+                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                    name="sheetName"
+                    value={flexibleFormState.sheetName}
+                    onChange={handleFlexibleChange}
+                    placeholder="Sheet1"
+                  />
+                </label>
+              </>
+            )}
+
             <label className="flex flex-col gap-2 text-sm font-medium">
               Excel file
               <input
@@ -169,8 +311,8 @@ export default function ImportPage() {
               {status.message && (
                 <span
                   className={`text-sm ${status.type === "error"
-                      ? "text-red-600"
-                      : "text-emerald-600"
+                    ? "text-red-600"
+                    : "text-emerald-600"
                     }`}
                 >
                   {status.message}
@@ -226,7 +368,7 @@ export default function ImportPage() {
                   >
                     <td className="px-4 py-3 font-medium">{row.rowNumber}</td>
                     <td className="px-4 py-3 font-mono text-xs text-zinc-600">
-                      {JSON.stringify(row.errors)}
+                      {typeof row.error === 'string' ? row.error : JSON.stringify(row.errors || row.error)}
                     </td>
                   </tr>
                 ))}

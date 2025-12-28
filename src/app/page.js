@@ -42,6 +42,12 @@ export default function Home() {
                 "Define how datasets join together for relational reports.",
               href: "/relationships",
             },
+            {
+              title: "Custom Queries",
+              description:
+                "Execute raw SQL queries and export results to Excel.",
+              href: "/query",
+            },
           ].map((card) => (
             <a
               key={card.title}
