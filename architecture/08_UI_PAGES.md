@@ -6,8 +6,8 @@
 
 ## /import
 - upload Excel
-- select dataset
-- select sheet
+- **Standard Mode**: select dataset + sheet
+- **Flexible Mode**: select database + table + sheet
 - run import
 - show summary + errors
 
@@ -20,3 +20,10 @@
 - run report
 - show table
 - export to Excel
+
+## /query
+- *New page*
+- Sidebar: Schema Browser (DBs -> Tables)
+- Main area: SQL Editor
+- Actions: Run, Export to Excel
+- Results: Data Grid

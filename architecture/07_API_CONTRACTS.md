@@ -25,3 +25,15 @@
 
 ## Health
 - GET /api/health
+
+## Flexible Import
+- POST /api/import/flexible
+  - body: { file, tableName, databaseName, sheetName }
+
+## Custom Queries & Structure
+- POST /api/query/run
+  - body: { query, databaseName }
+- POST /api/query/export
+  - body: { query, databaseName }
+- GET /api/structure
+  - query: ?database=foo (optional)
