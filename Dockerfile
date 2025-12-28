@@ -5,6 +5,7 @@ FROM base AS deps
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY prisma ./prisma
+COPY prisma.config.mjs ./
 RUN npx prisma generate
 
 FROM deps AS dev
