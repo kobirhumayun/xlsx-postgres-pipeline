@@ -62,3 +62,16 @@ Prefer SQL queries/views with server endpoints.
 UI button “Export Report to Excel”.
 Server executes report query and streams an `.xlsx` file.
 Must use ExcelJS streaming writer.
+
+## F) Flexible Import
+Allow imports into arbitrary PostgreSQL tables.
+- UI allows selecting Database and Table from schema browser.
+- Server validates headers against table columns.
+- Performs INSERTs directly (bypassing the `raw_rows`/`curated_rows` flow of standard datasets).
+
+## G) Custom Query
+UI to execute raw SQL queries.
+- Read-only intent (though technically permissions depend on DB user).
+- Schema browser sidebar to find tables.
+- "Run Query" displays results grid.
+- "Export to Excel" streams results.
