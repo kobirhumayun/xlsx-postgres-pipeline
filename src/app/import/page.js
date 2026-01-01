@@ -80,6 +80,9 @@ export default function ImportPage() {
       setStatus({ type: "success", message: "Import completed." });
     } catch (error) {
       console.error("Failed to import file", error);
+      if (error.payload?.errors) {
+        setErrors(error.payload.errors);
+      }
       setStatus({
         type: "error",
         message: error.message || "Failed to import file.",
