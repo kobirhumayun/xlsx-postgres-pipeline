@@ -19,6 +19,13 @@ export const dynamic = 'force-dynamic';
 export async function POST(request) {
     let pool;
     let client;
+
+    // Prepare info variables in outer scope for error handling access
+    let totalRows = 0;
+    let okRows = 0;
+    let errorRows = 0;
+    const errors = [];
+
     try {
         const formData = await request.formData();
         const parsed = formSchema.safeParse({
@@ -77,31 +84,24 @@ export async function POST(request) {
         await client.query("BEGIN");
 
         let headers = [];
-        let totalRows = 0;
-        let okRows = 0;
-        let errorRows = 0;
-        const errors = [];
 
-        // Prepare Batch Logic
+        // Batch configuration
         const BATCH_SIZE = 1000;
-        let batchValues = [];
-        let insertQuerySkeleton = "";
-        let safeColumns = "";
-        let safeTableName = "";
+        let batchData = []; // Store { rowNumber, values }
 
         const quoteId = (id) => `"${id.replace(/"/g, '""')}"`;
 
         const flushBatch = async () => {
-            if (batchValues.length === 0) return;
-            if (!headers.length) return; // Should not happen if we parse correctly
+            if (batchData.length === 0) return;
+            if (!headers.length) return;
 
             const numCols = headers.length;
-            const numRows = batchValues.length / numCols;
+            // Construct info for batch
+            const batchValues = batchData.flatMap(d => d.values);
 
-            // Construct values clause ($1,$2), ($3,$4)...
             const valuesClause = [];
             let paramIndex = 1;
-            for (let r = 0; r < numRows; r++) {
+            for (let r = 0; r < batchData.length; r++) {
                 const rowParams = [];
                 for (let c = 0; c < numCols; c++) {
                     rowParams.push(`$${paramIndex++}`);
@@ -109,31 +109,57 @@ export async function POST(request) {
                 valuesClause.push(`(${rowParams.join(',')})`);
             }
 
-            const finalQuery = `${insertQuerySkeleton} VALUES ${valuesClause.join(',')}`;
+            const safeTableName = quoteId(tableName);
+            const safeColumns = headers.map(quoteId).join(", ");
+            const finalQuery = `INSERT INTO ${safeTableName} (${safeColumns}) VALUES ${valuesClause.join(',')}`;
 
             try {
+                // Try batch insert with a savepoint
+                await client.query("SAVEPOINT batch_savepoint");
                 await client.query(finalQuery, batchValues);
-                okRows += numRows;
+                await client.query("RELEASE SAVEPOINT batch_savepoint");
+                okRows += batchData.length;
             } catch (err) {
-                throw new Error(`Batch insert failed: ${err.message}`);
+                await client.query("ROLLBACK TO SAVEPOINT batch_savepoint");
+                console.warn("Batch failed, retrying row-by-row to identify errors:", err.message);
+
+                // Fallback: Row-by-Row to find which one failed
+                const singleInsertQuery = `INSERT INTO ${safeTableName} (${safeColumns}) VALUES (${headers.map((_, i) => `$${i + 1}`).join(',')})`;
+
+                for (const item of batchData) {
+                    try {
+                        await client.query("SAVEPOINT row_savepoint");
+                        await client.query(singleInsertQuery, item.values);
+                        await client.query("RELEASE SAVEPOINT row_savepoint");
+                        okRows++;
+                    } catch (rowErr) {
+                        await client.query("ROLLBACK TO SAVEPOINT row_savepoint");
+                        errorRows++;
+                        errors.push({
+                            rowNumber: item.rowNumber,
+                            error: rowErr.message
+                        });
+                        // We could continue to find ALL errors in this batch, or stop at the first one.
+                        // For "All-or-nothing" robust import with feedback, finding ALL errors in the failing batch is helpful.
+                    }
+                }
+
+                if (errors.length > 0) {
+                    throw new Error(`Import failed with ${errors.length} errors in this batch.`);
+                }
             }
-            batchValues = [];
+            batchData = [];
         };
 
         // Iterate rows
-        // Note: ExcelJS Reader iterator yields `row` object. 
-        // row.values is 1-indexed array: [ <empty>, 'col1', 'col2' ]
         for await (const row of targetWorksheetReader) {
             // Row 1 is header
             if (row.number === 1) {
                 // Header row
                 const rawValues = Array.isArray(row.values) ? row.values : [];
-                // Filter out the potential empty first element if using .values property
-                // safest is .slice(1) mapping if length > 1
                 if (rawValues.length > 1) {
                     headers = rawValues.slice(1).map(v => String(v || "").trim()).filter(Boolean);
                 } else {
-                    // Try simpler iteration if sparse checking manual cell count
                     if (row.cellCount > 0) {
                         const extracted = [];
                         for (let i = 1; i <= row.cellCount; i++) {
@@ -146,22 +172,15 @@ export async function POST(request) {
                 if (!headers.length) {
                     throw new Error("Header row is empty or invalid.");
                 }
-
-                // Prep Query
-                safeTableName = quoteId(tableName);
-                safeColumns = headers.map(quoteId).join(", ");
-                insertQuerySkeleton = `INSERT INTO ${safeTableName} (${safeColumns})`;
                 continue;
             }
 
-            if (!headers.length) continue; // Skip if no header found yet (should be row 1)
+            if (!headers.length) continue;
 
-            // Data Row
             totalRows++;
 
             const rowValues = [];
             for (let i = 0; i < headers.length; i++) {
-                // getCell is 1-based
                 const cell = row.getCell(i + 1);
                 let val = cell.value;
                 if (val && typeof val === 'object') {
@@ -175,9 +194,9 @@ export async function POST(request) {
                 rowValues.push(val);
             }
 
-            batchValues.push(...rowValues);
+            batchData.push({ rowNumber: row.number, values: rowValues });
 
-            if (batchValues.length / headers.length >= BATCH_SIZE) {
+            if (batchData.length >= BATCH_SIZE) {
                 await flushBatch();
             }
         }
@@ -192,7 +211,7 @@ export async function POST(request) {
                 okRows,
                 errorRows,
             },
-            errors,
+            errors: [], // No errors if success
         });
 
     } catch (error) {
@@ -200,8 +219,13 @@ export async function POST(request) {
             try { await client.query("ROLLBACK"); } catch (e) { console.error(e); }
         }
         console.error("Flexible Import Error", error);
+
         return Response.json(
-            { error: "Failed to process import" },
+            {
+                error: "Failed to process import",
+                details: error.message,
+                errors: errors,
+            },
             { status: 500 }
         );
     } finally {
