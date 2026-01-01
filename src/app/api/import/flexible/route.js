@@ -197,7 +197,7 @@ export async function POST(request) {
         }
         console.error("Flexible Import Error", error);
         return Response.json(
-            { error: "Failed to process import", details: error.message },
+            { error: "Failed to process import" },
             { status: 500 }
         );
     } finally {
