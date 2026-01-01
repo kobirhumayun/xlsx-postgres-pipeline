@@ -66,65 +66,88 @@ export async function POST(request) {
         pool = getDbPool(databaseName);
         client = await pool.connect();
 
+        // Start Transaction
+        await client.query("BEGIN");
+
         // Prepare info
         let totalRows = 0;
         let okRows = 0;
         let errorRows = 0;
         const errors = [];
 
-        // Basic sanitize (though parameterized queries handle values, table names/columns usually can't be parameterized directly in same way without care)
-        // We should quote identifiers to be safe against weird chars, but basic SQL injection check on table name is good practice.
-        // For this internal tool, we assume 'tableName' and 'headers' are relatively trusted or at least valid identifiers.
-        // robust quoting:
         const quoteId = (id) => `"${id.replace(/"/g, '""')}"`;
         const safeTableName = quoteId(tableName);
         const safeColumns = headers.map(quoteId).join(", ");
 
-        // We'll prepare the statement dynamically per row or generic?
-        // Doing it per row is safer for mixed types but slower. for now, standard parameterized insert.
-        // INSERT INTO "table" ("col1", "col2") VALUES ($1, $2)
+        // Batch configuration
+        const BATCH_SIZE = 1000;
+        let batchValues = [];
+        let batchPlaceholders = [];
 
-        // Check if table exists (optional, but good for feedback)
-        // Actually, letting the INSERT fail is also a way to check.
+        const flushBatch = async () => {
+            if (batchValues.length === 0) return;
 
-        const placeholders = headers.map((_, i) => `$${i + 1}`).join(", ");
-        const insertQuery = `INSERT INTO ${safeTableName} (${safeColumns}) VALUES (${placeholders})`;
+            // Construct query: INSERT INTO t (c1, c2) VALUES ($1,$2), ($3,$4)...
+            const valuesClause = [];
+            let paramIndex = 1;
+
+            // We flattened the values, need to reconstruct placeholders
+            // batchValues has N * numCols items
+            const numCols = headers.length;
+            const numRows = batchValues.length / numCols;
+
+            for (let r = 0; r < numRows; r++) {
+                const rowParams = [];
+                for (let c = 0; c < numCols; c++) {
+                    rowParams.push(`$${paramIndex++}`);
+                }
+                valuesClause.push(`(${rowParams.join(',')})`);
+            }
+
+            const query = `INSERT INTO ${safeTableName} (${safeColumns}) VALUES ${valuesClause.join(',')}`;
+
+            try {
+                await client.query(query, batchValues);
+                okRows += numRows;
+            } catch (err) {
+                // In batch mode, if one fails, the whole batch fails.
+                // We could retry row-by-row, but for "Robustness" we want to fail fast or just note it.
+                // However, since we are in a TRANSACTION, a failure here ABORTS the transaction usually.
+                // So we MUST throw to trigger rollback.
+                throw new Error(`Batch insert failed: ${err.message}`);
+            }
+
+            batchValues = [];
+        };
+
 
         for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
             const row = worksheet.getRow(rowNumber);
             if (!row || row.cellCount === 0) continue;
 
-            totalRows += 1;
-
-            // Extract values matching headers indices
-            // headers are 0-indexed in our array, cells are 1-indexed in ExcelJS
             const rowValues = headers.map((_, index) => {
                 const cell = row.getCell(index + 1);
                 let val = cell.value;
-
-                // Basic helper for dates/types from existing logic could be useful context
-                // But for raw SQL insert, we mostly pass values. Postgres driver attempts casting.
-                // If generic text-heavy, might be okay.
-                // If cell is object (e.g. hyperlink), value might be .text
                 if (val && typeof val === 'object') {
                     if (val.text) val = val.text;
-                    else if (val.result) val = val.result; // formula result
+                    else if (val.result) val = val.result;
                 }
-
-                // Date handling overlap from ingest.js
-                // If it is a number and looks like date? 
-                // For now, pass raw unless obvious cleanup needed
                 return val;
             });
 
-            try {
-                await client.query(insertQuery, rowValues);
-                okRows += 1;
-            } catch (err) {
-                errorRows += 1;
-                errors.push({ rowNumber, error: err.message });
+            // Add to batch
+            batchValues.push(...rowValues);
+            totalRows += 1;
+
+            if (batchValues.length / headers.length >= BATCH_SIZE) {
+                await flushBatch();
             }
         }
+
+        await flushBatch();
+
+        // Commit Transaction
+        await client.query("COMMIT");
 
         return Response.json({
             summary: {
@@ -136,6 +159,9 @@ export async function POST(request) {
         });
 
     } catch (error) {
+        if (client) {
+            try { await client.query("ROLLBACK"); } catch (e) { console.error("Rollback failed", e); }
+        }
         console.error("Flexible Import Error", error);
         return Response.json(
             { error: "Failed to process import", details: error.message },
@@ -143,10 +169,7 @@ export async function POST(request) {
         );
     } finally {
         if (client) client.release();
-        // If we created a NEW pool just for this request (not default), we might want to end it?
-        // Current getDbPool reuses 'pool' if default, but creates NEW if custom DB.
-        // If custom db, we should probably end it to prevent leaks.
-        if (pool && pool !== getDbPool()) { // naive check if it's not the default singleton
+        if (pool && pool !== getDbPool()) {
             await pool.end();
         }
     }
