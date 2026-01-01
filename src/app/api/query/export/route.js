@@ -26,52 +26,12 @@ export async function POST(request) {
         pool = getDbPool(databaseName);
         client = await pool.connect();
 
-        // Use a ReadableStream to stream data
         const stream = new ReadableStream({
             async start(controller) {
-                const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
-                    stream: {
-                        write: (chunk) => controller.enqueue(chunk),
-                        end: () => controller.close(),
-                        // We need to implement dummy listeners? ExcelJS stream writer expects standard stream.
-                        // But here we are bridging to Web ReadableStream.
-                        // simpler hack: pass a "pass through" object or manage buffer.
-                    }
-                });
-
-                // FIX: ExcelJS Stream Writer writes to a Node Stream. 
-                // We need to bridge Node Writable -> Web Readable.
-                // Since this is Next.js App Router, we return a standard Response(readableStream).
-
-                // Let's rely on a simpler approach: 
-                // We create a TransformStream? No, Node environment.
-
-                // Let's keep it simple: We return a Response. 
-                // Actually, waiting for ExcelJS 4.4.0 stream support in Web env is tricky.
-                // But in Node runtime (Next.js server), we can just use `new Response(iterator)`?
-
-                // Re-think: Is it easier to write to a temporary file? or just buffer chunks?
-                // Proper way:
-                // Create a PassThrough stream (Node).
-                // Create a ReadableStream (Web) that pulls from PassThrough.
-                // THIS IS COMPLEX.
-
-                // ALTERNATIVE: Use iterator with pg-cursor and stream JSON? No, user wants Excel.
-
-                // Let's use the buffer approach for small files, but "Robust" means avoiding crash.
-                // Optimization: Maybe just limit rows?
-                // OR: True streaming.
-
-                // Real implementation of bridging ExcelJS Node Stream -> Web Response:
-                // 1. We need a way to capture "write" calls from WorkbookWriter and push to controller.
-                // 2. The simple object adapter below works well for this.
-
+                // Adapter to pipe ExcelJS writes to the Web ReadableStream controller
                 const writerAdapter = {
                     write: (chunk) => controller.enqueue(chunk),
-                    end: () => {
-                        // finalize
-                        controller.close();
-                    },
+                    end: () => controller.close(),
                     on: (event, fn) => { },
                     once: (event, fn) => { },
                     emit: (event, ...args) => { },
@@ -79,8 +39,8 @@ export async function POST(request) {
 
                 const workbookWriter = new ExcelJS.stream.xlsx.WorkbookWriter({
                     stream: writerAdapter,
-                    useStyles: false, // Performance
-                    useSharedStrings: false // Performance
+                    useStyles: false,
+                    useSharedStrings: false
                 });
 
                 const worksheet = workbookWriter.addWorksheet("Export");
@@ -90,10 +50,12 @@ export async function POST(request) {
                     const cursorObj = client.query(new Cursor(query));
 
                     let isFirstBatch = true;
+                    // Read in batches of 1000
+                    const BATCH_SIZE = 1000;
 
                     const readBatch = () => {
                         return new Promise((resolve, reject) => {
-                            cursorObj.read(500, (err, rows) => {
+                            cursorObj.read(BATCH_SIZE, (err, rows) => {
                                 if (err) return reject(err);
                                 resolve(rows);
                             });
@@ -115,17 +77,23 @@ export async function POST(request) {
                         rows.forEach(row => {
                             worksheet.addRow(row).commit();
                         });
+
+                        // Explicitly commit rows to free memory in ExcelJS stream writer
+                        // worksheet.commit(); // Not needed per row if addRow().commit() is called? 
+                        // Actually addRow returns Row object. Calling commit() on it frees it.
                     }
 
                     await workbookWriter.commit();
                 } catch (err) {
+                    console.error("Stream generation error", err);
                     controller.error(err);
                 } finally {
+                    // Release DB resources when stream is done or errors
                     if (client) client.release();
                     if (pool && pool !== getDbPool()) {
-                        await pool.end(); // Don't await here inside stream loop effectively? 
-                        // Actually client.release is enough for pool interaction.
-                        // pool.end() is tricky inside stream closure.
+                        // We can't await here easily inside start() without holding up the close?
+                        // But safe to trigger and forget or await.
+                        pool.end().catch(console.error);
                     }
                 }
             }
@@ -140,7 +108,7 @@ export async function POST(request) {
 
     } catch (error) {
         console.error("Export Error", error);
-        if (client) client.release(); // release if error before stream starts
+        if (client) client.release();
         return Response.json(
             { error: "Export failed", details: error.message },
             { status: 500 }
