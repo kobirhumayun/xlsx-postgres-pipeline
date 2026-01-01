@@ -1,3 +1,4 @@
+import { Readable } from "stream";
 import ExcelJS from "exceljs";
 import { z } from "zod";
 import { getDbPool } from "@/lib/db";
@@ -13,13 +14,7 @@ const formSchema = z.object({
     sheetName: z.string().optional(),
 });
 
-const getHeaderRow = (worksheet) => {
-    const headerRow = worksheet.getRow(1);
-    const headers = headerRow.values.slice(1).map((value) =>
-        String(value || "").trim()
-    );
-    return headers.filter(Boolean);
-};
+export const dynamic = 'force-dynamic';
 
 export async function POST(request) {
     let pool;
@@ -43,59 +38,69 @@ export async function POST(request) {
             return Response.json({ error: "File is required." }, { status: 400 });
         }
 
-        const workbook = new ExcelJS.Workbook();
-        const buffer = Buffer.from(await file.arrayBuffer());
-        await workbook.xlsx.load(buffer);
+        // Use Streaming Reader to avoid loading entire file into memory (prevent heap crash on large files)
+        // Convert Web Stream to Node Stream
+        const nodeStream = Readable.fromWeb(file.stream());
 
-        const worksheet =
-            (sheetName && workbook.getWorksheet(sheetName)) || workbook.worksheets[0];
+        const workbookReader = new ExcelJS.stream.xlsx.WorkbookReader(nodeStream, {
+            worksheets: 'emit',
+            sharedStrings: 'cache',
+            hyperlinks: 'ignore',
+            styles: 'ignore',
+        });
 
-        if (!worksheet) {
-            return Response.json({ error: "Worksheet not found." }, { status: 400 });
+        // Loop over worksheets
+        let targetWorksheetReader = null;
+
+        // We need to iterate to find the right sheet.
+        for await (const worksheetReader of workbookReader) {
+            if (sheetName) {
+                if (worksheetReader.name === sheetName) {
+                    targetWorksheetReader = worksheetReader;
+                    break;
+                }
+            } else {
+                // Default to first sheet
+                targetWorksheetReader = worksheetReader;
+                break;
+            }
         }
 
-        const headers = getHeaderRow(worksheet);
-        if (!headers.length) {
-            return Response.json(
-                { error: "Worksheet header row is empty." },
-                { status: 400 }
-            );
+        if (!targetWorksheetReader) {
+            return Response.json({ error: "Worksheet not found." }, { status: 400 });
         }
 
         // Connect to DB
         pool = getDbPool(databaseName);
         client = await pool.connect();
 
-        // Start Transaction
         await client.query("BEGIN");
 
-        // Prepare info
+        let headers = [];
         let totalRows = 0;
         let okRows = 0;
         let errorRows = 0;
         const errors = [];
 
-        const quoteId = (id) => `"${id.replace(/"/g, '""')}"`;
-        const safeTableName = quoteId(tableName);
-        const safeColumns = headers.map(quoteId).join(", ");
-
-        // Batch configuration
+        // Prepare Batch Logic
         const BATCH_SIZE = 1000;
         let batchValues = [];
-        let batchPlaceholders = [];
+        let insertQuerySkeleton = "";
+        let safeColumns = "";
+        let safeTableName = "";
+
+        const quoteId = (id) => `"${id.replace(/"/g, '""')}"`;
 
         const flushBatch = async () => {
             if (batchValues.length === 0) return;
+            if (!headers.length) return; // Should not happen if we parse correctly
 
-            // Construct query: INSERT INTO t (c1, c2) VALUES ($1,$2), ($3,$4)...
-            const valuesClause = [];
-            let paramIndex = 1;
-
-            // We flattened the values, need to reconstruct placeholders
-            // batchValues has N * numCols items
             const numCols = headers.length;
             const numRows = batchValues.length / numCols;
 
+            // Construct values clause ($1,$2), ($3,$4)...
+            const valuesClause = [];
+            let paramIndex = 1;
             for (let r = 0; r < numRows; r++) {
                 const rowParams = [];
                 for (let c = 0; c < numCols; c++) {
@@ -104,40 +109,69 @@ export async function POST(request) {
                 valuesClause.push(`(${rowParams.join(',')})`);
             }
 
-            const query = `INSERT INTO ${safeTableName} (${safeColumns}) VALUES ${valuesClause.join(',')}`;
+            const finalQuery = `${insertQuerySkeleton} VALUES ${valuesClause.join(',')}`;
 
             try {
-                await client.query(query, batchValues);
+                await client.query(finalQuery, batchValues);
                 okRows += numRows;
             } catch (err) {
-                // In batch mode, if one fails, the whole batch fails.
-                // We could retry row-by-row, but for "Robustness" we want to fail fast or just note it.
-                // However, since we are in a TRANSACTION, a failure here ABORTS the transaction usually.
-                // So we MUST throw to trigger rollback.
                 throw new Error(`Batch insert failed: ${err.message}`);
             }
-
             batchValues = [];
         };
 
+        // Iterate rows
+        // Note: ExcelJS Reader iterator yields `row` object. 
+        // row.values is 1-indexed array: [ <empty>, 'col1', 'col2' ]
+        for await (const row of targetWorksheetReader) {
+            // Row 1 is header
+            if (row.number === 1) {
+                // Header row
+                const rawValues = Array.isArray(row.values) ? row.values : [];
+                // Filter out the potential empty first element if using .values property
+                // safest is .slice(1) mapping if length > 1
+                if (rawValues.length > 1) {
+                    headers = rawValues.slice(1).map(v => String(v || "").trim()).filter(Boolean);
+                } else {
+                    // Try simpler iteration if sparse checking manual cell count
+                    if (row.cellCount > 0) {
+                        const extracted = [];
+                        for (let i = 1; i <= row.cellCount; i++) {
+                            extracted.push(String(row.getCell(i).value || "").trim());
+                        }
+                        headers = extracted.filter(Boolean);
+                    }
+                }
 
-        for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
-            const row = worksheet.getRow(rowNumber);
-            if (!row || row.cellCount === 0) continue;
+                if (!headers.length) {
+                    throw new Error("Header row is empty or invalid.");
+                }
 
-            const rowValues = headers.map((_, index) => {
-                const cell = row.getCell(index + 1);
+                // Prep Query
+                safeTableName = quoteId(tableName);
+                safeColumns = headers.map(quoteId).join(", ");
+                insertQuerySkeleton = `INSERT INTO ${safeTableName} (${safeColumns})`;
+                continue;
+            }
+
+            if (!headers.length) continue; // Skip if no header found yet (should be row 1)
+
+            // Data Row
+            totalRows++;
+
+            const rowValues = [];
+            for (let i = 0; i < headers.length; i++) {
+                // getCell is 1-based
+                const cell = row.getCell(i + 1);
                 let val = cell.value;
                 if (val && typeof val === 'object') {
                     if (val.text) val = val.text;
                     else if (val.result) val = val.result;
                 }
-                return val;
-            });
+                rowValues.push(val);
+            }
 
-            // Add to batch
             batchValues.push(...rowValues);
-            totalRows += 1;
 
             if (batchValues.length / headers.length >= BATCH_SIZE) {
                 await flushBatch();
@@ -146,7 +180,6 @@ export async function POST(request) {
 
         await flushBatch();
 
-        // Commit Transaction
         await client.query("COMMIT");
 
         return Response.json({
@@ -160,7 +193,7 @@ export async function POST(request) {
 
     } catch (error) {
         if (client) {
-            try { await client.query("ROLLBACK"); } catch (e) { console.error("Rollback failed", e); }
+            try { await client.query("ROLLBACK"); } catch (e) { console.error(e); }
         }
         console.error("Flexible Import Error", error);
         return Response.json(
