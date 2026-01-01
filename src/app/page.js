@@ -7,45 +7,25 @@ export default function Home() {
             XLSX → Postgres Pipeline
           </p>
           <h1 className="text-4xl font-semibold tracking-tight">
-            Configure datasets, ingest Excel, and run relational reports.
+            Import Excel files and run custom SQL queries.
           </h1>
           <p className="max-w-2xl text-base text-zinc-600">
-            This single-developer tool captures raw Excel data, normalizes it
-            into curated tables, and surfaces missing related data across
-            datasets.
+            A flexible tool to import Excel data into PostgreSQL tables and execute raw queries for analysis and export.
           </p>
         </header>
 
-        <section className="grid gap-6 md:grid-cols-3">
+        <section className="grid gap-6 md:grid-cols-2">
           {[
             {
-              title: "Datasets",
+              title: "Import",
               description:
-                "Define schema expectations, primary keys, and column mappings.",
-              href: "/datasets",
-            },
-            {
-              title: "Imports",
-              description:
-                "Upload Excel files, parse rows, and track import runs.",
+                "Upload Excel files directly into flexible table locations.",
               href: "/import",
             },
             {
-              title: "Reports",
+              title: "Query",
               description:
-                "Run missing-related-data checks and export results to Excel.",
-              href: "/reports",
-            },
-            {
-              title: "Relationships",
-              description:
-                "Define how datasets join together for relational reports.",
-              href: "/relationships",
-            },
-            {
-              title: "Custom Queries",
-              description:
-                "Execute raw SQL queries and export results to Excel.",
+                "Execute raw SQL queries against multiple tables and export results.",
               href: "/query",
             },
           ].map((card) => (
@@ -65,9 +45,7 @@ export default function Home() {
 
         <section className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-600 shadow-sm">
           <p>
-            Start by defining your dataset registry. Each dataset stores its
-            expected sheet name, primary keys, and mapping rules that drive
-            parsing and reporting.
+            Use the <strong>Import</strong> tool to populate your database tables from Excel sheets. Use the <strong>Query</strong> tool to analyze that data and export reports.
           </p>
         </section>
       </main>
