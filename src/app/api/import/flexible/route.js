@@ -168,6 +168,10 @@ export async function POST(request) {
                     if (val.text) val = val.text;
                     else if (val.result) val = val.result;
                 }
+                // Sanitize: Postgres rejects empty strings for non-text types. Convert "" to null.
+                if (typeof val === 'string' && val.trim() === '') {
+                    val = null;
+                }
                 rowValues.push(val);
             }
 
