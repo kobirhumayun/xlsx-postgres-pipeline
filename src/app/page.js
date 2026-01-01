@@ -16,31 +16,13 @@ export default function Home() {
           </p>
         </header>
 
-        <section className="grid gap-6 md:grid-cols-3">
+        <section className="grid gap-6 md:grid-cols-2">
           {[
-            {
-              title: "Datasets",
-              description:
-                "Define schema expectations, primary keys, and column mappings.",
-              href: "/datasets",
-            },
             {
               title: "Imports",
               description:
-                "Upload Excel files, parse rows, and track import runs.",
+                "Upload Excel files to flexible table locations.",
               href: "/import",
-            },
-            {
-              title: "Reports",
-              description:
-                "Run missing-related-data checks and export results to Excel.",
-              href: "/reports",
-            },
-            {
-              title: "Relationships",
-              description:
-                "Define how datasets join together for relational reports.",
-              href: "/relationships",
             },
             {
               title: "Custom Queries",
@@ -65,9 +47,8 @@ export default function Home() {
 
         <section className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-600 shadow-sm">
           <p>
-            Start by defining your dataset registry. Each dataset stores its
-            expected sheet name, primary keys, and mapping rules that drive
-            parsing and reporting.
+            Start by importing an Excel file. You can specify the target table and mapping.
+            Then use the Custom Queries page to analyze your data and export results.
           </p>
         </section>
       </main>
