@@ -1,18 +1,19 @@
 import { z } from "zod";
 import { getDbPool } from "@/lib/db";
 import ExcelJS from "exceljs";
+import Cursor from "pg-cursor";
 
 const querySchema = z.object({
     query: z.string().min(1, "Query is required"),
     databaseName: z.string().optional(),
 });
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request) {
     let pool;
     let client;
     try {
-        // For streaming/download, we might accept JSON body or Form data. 
-        // Standard fetch can send JSON.
         const body = await request.json();
         const parsed = querySchema.safeParse(body);
 
@@ -25,33 +26,80 @@ export async function POST(request) {
         pool = getDbPool(databaseName);
         client = await pool.connect();
 
-        // Use a cursor for large datasets if possible, but basic query is easier to start.
-        // ExcelJS streaming workbook.
+        const stream = new ReadableStream({
+            async start(controller) {
+                // Adapter to pipe ExcelJS writes to the Web ReadableStream controller
+                const writerAdapter = {
+                    write: (chunk) => controller.enqueue(chunk),
+                    end: () => controller.close(),
+                    on: (event, fn) => { },
+                    once: (event, fn) => { },
+                    emit: (event, ...args) => { },
+                };
 
-        // We need to return a ReadableStream or similar for Next.js App Router
-        // Next.js App Router doesn't support easy piping to Response object in same way as Node http.
-        // However, we can create a Buffer and return it, or use `new Response(stream)`.
+                const workbookWriter = new ExcelJS.stream.xlsx.WorkbookWriter({
+                    stream: writerAdapter,
+                    useStyles: false,
+                    useSharedStrings: false
+                });
 
-        // For simplicity/robustness with ExcelJS:
-        // 1. Fetch all rows (assuming reasonably sized for "web app export", if huge, cursor needed).
-        // 2. Write to buffer.
-        // 3. Return buffer.
+                const worksheet = workbookWriter.addWorksheet("Export");
 
-        const result = await client.query(query);
+                let cursor;
+                try {
+                    const cursorObj = client.query(new Cursor(query));
 
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet("Export");
+                    let isFirstBatch = true;
+                    // Read in batches of 1000
+                    const BATCH_SIZE = 1000;
 
-        // Add headers
-        const columns = result.fields.map(f => ({ header: f.name, key: f.name }));
-        worksheet.columns = columns;
+                    const readBatch = () => {
+                        return new Promise((resolve, reject) => {
+                            cursorObj.read(BATCH_SIZE, (err, rows) => {
+                                if (err) return reject(err);
+                                resolve(rows);
+                            });
+                        });
+                    };
 
-        // Add rows
-        worksheet.addRows(result.rows);
+                    while (true) {
+                        const rows = await readBatch();
+                        if (rows.length === 0) break;
 
-        const buffer = await workbook.xlsx.writeBuffer();
+                        if (isFirstBatch) {
+                            if (rows.length > 0) {
+                                const columns = Object.keys(rows[0]).map(k => ({ header: k, key: k }));
+                                worksheet.columns = columns;
+                            }
+                            isFirstBatch = false;
+                        }
 
-        return new Response(buffer, {
+                        rows.forEach(row => {
+                            worksheet.addRow(row).commit();
+                        });
+
+                        // Explicitly commit rows to free memory in ExcelJS stream writer
+                        // worksheet.commit(); // Not needed per row if addRow().commit() is called? 
+                        // Actually addRow returns Row object. Calling commit() on it frees it.
+                    }
+
+                    await workbookWriter.commit();
+                } catch (err) {
+                    console.error("Stream generation error", err);
+                    controller.error(err);
+                } finally {
+                    // Release DB resources when stream is done or errors
+                    if (client) client.release();
+                    if (pool && pool !== getDbPool()) {
+                        // We can't await here easily inside start() without holding up the close?
+                        // But safe to trigger and forget or await.
+                        pool.end().catch(console.error);
+                    }
+                }
+            }
+        });
+
+        return new Response(stream, {
             headers: {
                 "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 "Content-Disposition": 'attachment; filename="export.xlsx"',
@@ -60,14 +108,10 @@ export async function POST(request) {
 
     } catch (error) {
         console.error("Export Error", error);
+        if (client) client.release();
         return Response.json(
             { error: "Export failed", details: error.message },
             { status: 500 }
         );
-    } finally {
-        if (client) client.release();
-        if (pool && pool !== getDbPool()) {
-            await pool.end();
-        }
     }
 }

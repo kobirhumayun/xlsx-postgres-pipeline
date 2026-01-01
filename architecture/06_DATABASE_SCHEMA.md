@@ -1,66 +1,19 @@
-# Database Schema (Minimum)
+# Database Schema
 
-## Tables
-### datasets
-- id
-- slug
-- name
-- default_sheet_name
-- pk_fields_jsonb
-- mapping_jsonb
-- created_at
-- updated_at
+## Overview
+The application now operates with a minimal Prisma schema needed only for connection management and potentially future auth/metadata.
 
-### import_runs
-- id
-- dataset_id
-- file_name
-- file_hash
-- imported_at
-- total_rows
-- ok_rows
-- error_rows
-- notes
+The core functionality (Flexible Import) interacts directly with **existing PostgreSQL tables** in any schema.
 
-### raw_rows
-- id
-- dataset_id
-- import_run_id
-- row_number
-- business_key
-- row_jsonb
-- row_hash
-- parsed_ok
-- parse_errors_jsonb
-- created_at
+## Core Models
 
-### relationships
-- id
-- name
-- left_dataset_id
-- right_dataset_id
-- join_mapping_jsonb
-- created_at
+### Prism setup
+Standard `generator client` and `datasource db` configuration.
 
-## Curated storage
-Either:
-a) One generic curated_rows table (preferred for flexibility)
-b) Per-dataset curated tables (more complex)
+## Application Data
+The application does not enforce a strict schema for its own metadata anymore.
+- **Import**: Inserts into user-selected tables.
+- **Query**: Reads from user-selected tables.
 
-Preferred approach:
-- curated_rows:
-  - id
-  - dataset_id
-  - business_key
-  - normalized_jsonb
-  - typed_columns (common)
-  - last_import_run_id
-  - updated_at
-
-Performance requirement:
-- Ensure join keys exist in indexed columns OR generated stored columns for performance.
-
-## Indexes (minimum expectations)
-- curated_rows(dataset_id, business_key)
-- raw_rows(dataset_id, business_key)
-- join key indexes as needed for relationships/reports
+## Indexes
+- Users should ensure their target tables have appropriate indexes for the queries they intend to run.

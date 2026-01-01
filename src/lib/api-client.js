@@ -36,9 +36,11 @@ export async function fetchJson(url, options = {}) {
     if (!response.ok) {
         if (isJson) {
             const errorPayload = await response.json();
-            throw new Error(
+            const error = new Error(
                 errorPayload.error || errorPayload.message || "An error occurred"
             );
+            error.payload = errorPayload;
+            throw error;
         }
         // If not JSON (e.g. HTML 404/500 page), use status text
         throw new Error(`API Error: ${response.status} ${response.statusText}`);

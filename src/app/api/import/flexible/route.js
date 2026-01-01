@@ -1,3 +1,4 @@
+import { Readable } from "stream";
 import ExcelJS from "exceljs";
 import { z } from "zod";
 import { getDbPool } from "@/lib/db";
@@ -13,17 +14,18 @@ const formSchema = z.object({
     sheetName: z.string().optional(),
 });
 
-const getHeaderRow = (worksheet) => {
-    const headerRow = worksheet.getRow(1);
-    const headers = headerRow.values.slice(1).map((value) =>
-        String(value || "").trim()
-    );
-    return headers.filter(Boolean);
-};
+export const dynamic = 'force-dynamic';
 
 export async function POST(request) {
     let pool;
     let client;
+
+    // Prepare info variables in outer scope for error handling access
+    let totalRows = 0;
+    let okRows = 0;
+    let errorRows = 0;
+    const errors = [];
+
     try {
         const formData = await request.formData();
         const parsed = formSchema.safeParse({
@@ -43,88 +45,165 @@ export async function POST(request) {
             return Response.json({ error: "File is required." }, { status: 400 });
         }
 
-        const workbook = new ExcelJS.Workbook();
-        const buffer = Buffer.from(await file.arrayBuffer());
-        await workbook.xlsx.load(buffer);
+        // Use Streaming Reader to avoid loading entire file into memory (prevent heap crash on large files)
+        // Convert Web Stream to Node Stream
+        const nodeStream = Readable.fromWeb(file.stream());
 
-        const worksheet =
-            (sheetName && workbook.getWorksheet(sheetName)) || workbook.worksheets[0];
+        const workbookReader = new ExcelJS.stream.xlsx.WorkbookReader(nodeStream, {
+            worksheets: 'emit',
+            sharedStrings: 'cache',
+            hyperlinks: 'ignore',
+            styles: 'ignore',
+        });
 
-        if (!worksheet) {
-            return Response.json({ error: "Worksheet not found." }, { status: 400 });
+        // Loop over worksheets
+        let targetWorksheetReader = null;
+
+        // We need to iterate to find the right sheet.
+        for await (const worksheetReader of workbookReader) {
+            if (sheetName) {
+                if (worksheetReader.name === sheetName) {
+                    targetWorksheetReader = worksheetReader;
+                    break;
+                }
+            } else {
+                // Default to first sheet
+                targetWorksheetReader = worksheetReader;
+                break;
+            }
         }
 
-        const headers = getHeaderRow(worksheet);
-        if (!headers.length) {
-            return Response.json(
-                { error: "Worksheet header row is empty." },
-                { status: 400 }
-            );
+        if (!targetWorksheetReader) {
+            return Response.json({ error: "Worksheet not found." }, { status: 400 });
         }
 
         // Connect to DB
         pool = getDbPool(databaseName);
         client = await pool.connect();
 
-        // Prepare info
-        let totalRows = 0;
-        let okRows = 0;
-        let errorRows = 0;
-        const errors = [];
+        await client.query("BEGIN");
 
-        // Basic sanitize (though parameterized queries handle values, table names/columns usually can't be parameterized directly in same way without care)
-        // We should quote identifiers to be safe against weird chars, but basic SQL injection check on table name is good practice.
-        // For this internal tool, we assume 'tableName' and 'headers' are relatively trusted or at least valid identifiers.
-        // robust quoting:
+        let headers = [];
+
+        // Batch configuration
+        const BATCH_SIZE = 1000;
+        let batchData = []; // Store { rowNumber, values }
+
         const quoteId = (id) => `"${id.replace(/"/g, '""')}"`;
-        const safeTableName = quoteId(tableName);
-        const safeColumns = headers.map(quoteId).join(", ");
 
-        // We'll prepare the statement dynamically per row or generic?
-        // Doing it per row is safer for mixed types but slower. for now, standard parameterized insert.
-        // INSERT INTO "table" ("col1", "col2") VALUES ($1, $2)
+        const flushBatch = async () => {
+            if (batchData.length === 0) return;
+            if (!headers.length) return;
 
-        // Check if table exists (optional, but good for feedback)
-        // Actually, letting the INSERT fail is also a way to check.
+            const numCols = headers.length;
+            // Construct info for batch
+            const batchValues = batchData.flatMap(d => d.values);
 
-        const placeholders = headers.map((_, i) => `$${i + 1}`).join(", ");
-        const insertQuery = `INSERT INTO ${safeTableName} (${safeColumns}) VALUES (${placeholders})`;
-
-        for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
-            const row = worksheet.getRow(rowNumber);
-            if (!row || row.cellCount === 0) continue;
-
-            totalRows += 1;
-
-            // Extract values matching headers indices
-            // headers are 0-indexed in our array, cells are 1-indexed in ExcelJS
-            const rowValues = headers.map((_, index) => {
-                const cell = row.getCell(index + 1);
-                let val = cell.value;
-
-                // Basic helper for dates/types from existing logic could be useful context
-                // But for raw SQL insert, we mostly pass values. Postgres driver attempts casting.
-                // If generic text-heavy, might be okay.
-                // If cell is object (e.g. hyperlink), value might be .text
-                if (val && typeof val === 'object') {
-                    if (val.text) val = val.text;
-                    else if (val.result) val = val.result; // formula result
+            const valuesClause = [];
+            let paramIndex = 1;
+            for (let r = 0; r < batchData.length; r++) {
+                const rowParams = [];
+                for (let c = 0; c < numCols; c++) {
+                    rowParams.push(`$${paramIndex++}`);
                 }
+                valuesClause.push(`(${rowParams.join(',')})`);
+            }
 
-                // Date handling overlap from ingest.js
-                // If it is a number and looks like date? 
-                // For now, pass raw unless obvious cleanup needed
-                return val;
-            });
+            const safeTableName = quoteId(tableName);
+            const safeColumns = headers.map(quoteId).join(", ");
+            const finalQuery = `INSERT INTO ${safeTableName} (${safeColumns}) VALUES ${valuesClause.join(',')}`;
 
             try {
-                await client.query(insertQuery, rowValues);
-                okRows += 1;
+                // Try batch insert with a savepoint
+                await client.query("SAVEPOINT batch_savepoint");
+                await client.query(finalQuery, batchValues);
+                await client.query("RELEASE SAVEPOINT batch_savepoint");
+                okRows += batchData.length;
             } catch (err) {
-                errorRows += 1;
-                errors.push({ rowNumber, error: err.message });
+                await client.query("ROLLBACK TO SAVEPOINT batch_savepoint");
+                console.warn("Batch failed, retrying row-by-row to identify errors:", err.message);
+
+                // Fallback: Row-by-Row to find which one failed
+                const singleInsertQuery = `INSERT INTO ${safeTableName} (${safeColumns}) VALUES (${headers.map((_, i) => `$${i + 1}`).join(',')})`;
+
+                for (const item of batchData) {
+                    try {
+                        await client.query("SAVEPOINT row_savepoint");
+                        await client.query(singleInsertQuery, item.values);
+                        await client.query("RELEASE SAVEPOINT row_savepoint");
+                        okRows++;
+                    } catch (rowErr) {
+                        await client.query("ROLLBACK TO SAVEPOINT row_savepoint");
+                        errorRows++;
+                        errors.push({
+                            rowNumber: item.rowNumber,
+                            error: rowErr.message
+                        });
+                        // We could continue to find ALL errors in this batch, or stop at the first one.
+                        // For "All-or-nothing" robust import with feedback, finding ALL errors in the failing batch is helpful.
+                    }
+                }
+
+                if (errors.length > 0) {
+                    throw new Error(`Import failed with ${errors.length} errors in this batch.`);
+                }
+            }
+            batchData = [];
+        };
+
+        // Iterate rows
+        for await (const row of targetWorksheetReader) {
+            // Row 1 is header
+            if (row.number === 1) {
+                // Header row
+                const rawValues = Array.isArray(row.values) ? row.values : [];
+                if (rawValues.length > 1) {
+                    headers = rawValues.slice(1).map(v => String(v || "").trim()).filter(Boolean);
+                } else {
+                    if (row.cellCount > 0) {
+                        const extracted = [];
+                        for (let i = 1; i <= row.cellCount; i++) {
+                            extracted.push(String(row.getCell(i).value || "").trim());
+                        }
+                        headers = extracted.filter(Boolean);
+                    }
+                }
+
+                if (!headers.length) {
+                    throw new Error("Header row is empty or invalid.");
+                }
+                continue;
+            }
+
+            if (!headers.length) continue;
+
+            totalRows++;
+
+            const rowValues = [];
+            for (let i = 0; i < headers.length; i++) {
+                const cell = row.getCell(i + 1);
+                let val = cell.value;
+                if (val && typeof val === 'object') {
+                    if (val.text) val = val.text;
+                    else if (val.result) val = val.result;
+                }
+                // Sanitize: Postgres rejects empty strings for non-text types. Convert "" to null.
+                if (typeof val === 'string' && val.trim() === '') {
+                    val = null;
+                }
+                rowValues.push(val);
+            }
+
+            batchData.push({ rowNumber: row.number, values: rowValues });
+
+            if (batchData.length >= BATCH_SIZE) {
+                await flushBatch();
             }
         }
+
+        await flushBatch();
+
+        await client.query("COMMIT");
 
         return Response.json({
             summary: {
@@ -132,21 +211,26 @@ export async function POST(request) {
                 okRows,
                 errorRows,
             },
-            errors,
+            errors: [], // No errors if success
         });
 
     } catch (error) {
+        if (client) {
+            try { await client.query("ROLLBACK"); } catch (e) { console.error(e); }
+        }
         console.error("Flexible Import Error", error);
+
         return Response.json(
-            { error: "Failed to process import", details: error.message },
+            {
+                error: "Failed to process import",
+                details: error.message,
+                errors: errors,
+            },
             { status: 500 }
         );
     } finally {
         if (client) client.release();
-        // If we created a NEW pool just for this request (not default), we might want to end it?
-        // Current getDbPool reuses 'pool' if default, but creates NEW if custom DB.
-        // If custom db, we should probably end it to prevent leaks.
-        if (pool && pool !== getDbPool()) { // naive check if it's not the default singleton
+        if (pool && pool !== getDbPool()) {
             await pool.end();
         }
     }
