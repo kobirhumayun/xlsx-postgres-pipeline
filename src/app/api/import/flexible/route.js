@@ -225,6 +225,11 @@ export async function POST(request) {
                 error: "Failed to process import",
                 details: error.message,
                 errors: errors,
+                summary: {
+                    totalRows,
+                    okRows,
+                    errorRows,
+                },
             },
             { status: 500 }
         );

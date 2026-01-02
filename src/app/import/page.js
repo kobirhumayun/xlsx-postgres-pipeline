@@ -83,6 +83,9 @@ export default function ImportPage() {
       if (error.payload?.errors) {
         setErrors(error.payload.errors);
       }
+      if (error.payload?.summary) {
+        setSummary(error.payload.summary);
+      }
       setStatus({
         type: "error",
         message: error.message || "Failed to import file.",
