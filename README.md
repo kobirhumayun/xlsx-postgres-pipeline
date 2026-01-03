@@ -124,6 +124,7 @@ docker compose --profile backup exec backup /usr/local/bin/restore.sh /backups/y
 
 ### Configuration
 Adjust `docker-compose.yml` environment variables:
+- `DATABASE_URL`: Connection string (defaults to project's .env value).
 - `BACKUP_SCHEDULE`: Cron expression (e.g. `0 2 * * *` for 2AM).
 - `RETENTION_DAYS`: Days to keep old files.
 
