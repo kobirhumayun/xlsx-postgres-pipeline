@@ -122,6 +122,13 @@ docker compose --profile backup exec backup /usr/local/bin/backup.sh
 docker compose --profile backup exec backup /usr/local/bin/restore.sh /backups/your_backup_file.sql.gz
 ```
 
+> **Note for Windows (Git Bash) Users:**
+> If you encounter `OCI runtime exec failed` errors due to path conversion, use double slashes `//` for absolute paths:
+> ```bash
+> docker compose --profile backup exec backup //usr/local/bin/backup.sh
+> docker compose --profile backup exec backup //usr/local/bin/restore.sh //backups/filename.sql.gz
+> ```
+
 ### Configuration
 Adjust `docker-compose.yml` environment variables:
 - `DATABASE_URL`: Connection string (defaults to project's .env value).
