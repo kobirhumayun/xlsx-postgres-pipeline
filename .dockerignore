@@ -8,3 +8,9 @@ README.md
 .env
 .env*.local
 docker-compose.*
+docker-compose.*
+
+# backups
+backups/
+*.sql
+*.sql.gz

@@ -7,8 +7,6 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: ${DATABASE_URL}
-    depends_on:
-      - db
 
   db:
     image: postgres:16
@@ -30,8 +28,18 @@ services:
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
     ports:
       - "5050:80"
-    depends_on:
-      - db
+
+  backup:
+    build:
+      context: ./backup
+    container_name: backup_service
+    profiles: [ "tools", "backup" ]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 0 * * *} # Daily at midnight
+      RETENTION_DAYS: ${RETENTION_DAYS:-7}
+    volumes:
+      - ./backups:/backups
 
 volumes:
   postgres_data:

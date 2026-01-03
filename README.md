@@ -93,3 +93,46 @@ If you want to run `next dev` locally (outside Docker) while using the Docker da
 - **Framework**: Next.js 16 (Turbopack)
 - **Styling**: Tailwind CSS / Shadcn UI
 
+## Backup & Recovery
+
+A dedicated containerized service (`backup` profile) handles automated and manual operations.
+
+### Automated Backups
+- Runs automatically when the `backup` profile is enabled.
+- **Schedule**: Daily at midnight (00:00).
+- **Retention**: Keeps the last 7 days of backups.
+- **Location**: HOST `./backups` maps to CONTAINER `/backups`.
+
+### Commands
+
+**Start with Backup Service:**
+```bash
+docker compose --profile localdb --profile backup up -d
+```
+
+**Manual Instant Backup:**
+```bash
+docker compose --profile backup exec backup /usr/local/bin/backup.sh
+```
+
+**Restore from File:**
+```bash
+# 1. Place .sql.gz file in ./backups on host
+# 2. Run restore script with internal path
+docker compose --profile backup exec backup /usr/local/bin/restore.sh /backups/your_backup_file.sql.gz
+```
+
+> **Note for Windows (Git Bash) Users:**
+> If you encounter `OCI runtime exec failed` errors due to path conversion, use double slashes `//` for absolute paths:
+> ```bash
+> docker compose --profile backup exec backup //usr/local/bin/backup.sh
+> docker compose --profile backup exec backup //usr/local/bin/restore.sh //backups/filename.sql.gz
+> ```
+
+### Configuration
+Adjust `docker-compose.yml` environment variables:
+- `DATABASE_URL`: Connection string (defaults to project's .env value).
+- `BACKUP_SCHEDULE`: Cron expression (e.g. `0 2 * * *` for 2AM).
+- `RETENTION_DAYS`: Days to keep old files.
+
+
