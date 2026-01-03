@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 BACKUP_FILE="$1"
 
@@ -18,11 +19,12 @@ fi
 echo "[$(date)] Starting restore from $BACKUP_FILE..."
 
 # Extract and restore
-# Using psql to restore plain SQL dump
+# Using psql to restore plain SQL dump (works with DATABASE_URL connection string)
 # WARNING: This might fail if database is not clean.
 # For robustness, we might want to terminate connections or drop/create schema.
 # But simply piping to psql is the standard basic approach for data restoration.
-gunzip -c "$BACKUP_FILE" | psql
+CLEAN_DB_URL="${DATABASE_URL%\?*}"
+gunzip -c "$BACKUP_FILE" | psql "$CLEAN_DB_URL"
 
 if [ $? -eq 0 ]; then
     echo "[$(date)] Restore completed successfully."

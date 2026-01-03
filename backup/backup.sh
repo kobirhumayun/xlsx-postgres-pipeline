@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 # Configuration
 BACKUP_DIR="/backups"
@@ -13,8 +14,10 @@ echo "[$(date)] Starting backup..."
 mkdir -p "$BACKUP_DIR"
 
 # Perform backup
-# We assume PGHOST, PGUSER, PGPASSWORD, PGDATABASE are set in environment or passed via docker-compose
-if pg_dump | gzip > "$BACKUP_FILE"; then
+# We use DATABASE_URL if provided. We strip query parameters (like ?schema=public) as pg_dump doesn't like them.
+CLEAN_DB_URL="${DATABASE_URL%\?*}"
+
+if pg_dump "$CLEAN_DB_URL" | gzip > "$BACKUP_FILE"; then
     echo "[$(date)] Backup completed successfully: $BACKUP_FILE"
 else
     echo "[$(date)] Backup failed!"

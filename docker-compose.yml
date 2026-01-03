@@ -39,10 +39,7 @@ services:
     container_name: backup_service
     profiles: [ "tools", "backup" ]
     environment:
-      PGHOST: db
-      PGUSER: postgres
-      PGPASSWORD: postgres
-      PGDATABASE: xlsx_pipeline
+      DATABASE_URL: ${DATABASE_URL}
       BACKUP_SCHEDULE: "0 0 * * *" # Daily at midnight
       RETENTION_DAYS: 7
     volumes:
