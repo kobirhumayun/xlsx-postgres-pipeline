@@ -33,5 +33,22 @@ services:
     depends_on:
       - db
 
+  backup:
+    build:
+      context: ./backup
+    container_name: backup_service
+    profiles: [ "tools", "backup" ]
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: xlsx_pipeline
+      BACKUP_SCHEDULE: "0 0 * * *" # Daily at midnight
+      RETENTION_DAYS: 7
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      - db
+
 volumes:
   postgres_data:
