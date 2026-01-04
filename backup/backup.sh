@@ -17,7 +17,7 @@ mkdir -p "$BACKUP_DIR"
 # We use DATABASE_URL if provided. We strip query parameters (like ?schema=public) as pg_dump doesn't like them.
 CLEAN_DB_URL="${DATABASE_URL%\?*}"
 
-if pg_dump "$CLEAN_DB_URL" | gzip > "$BACKUP_FILE"; then
+if pg_dump --clean --if-exists "$CLEAN_DB_URL" | gzip > "$BACKUP_FILE"; then
     echo "[$(date)] Backup completed successfully: $BACKUP_FILE"
 else
     echo "[$(date)] Backup failed!"
