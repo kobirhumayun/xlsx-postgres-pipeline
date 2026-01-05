@@ -25,6 +25,7 @@ export async function POST(request) {
     let okRows = 0;
     let errorRows = 0;
     const errors = [];
+    let transactionStarted = false;
 
     try {
         const formData = await request.formData();
@@ -116,7 +117,7 @@ export async function POST(request) {
         }
 
         let headers = [];
-        let transactionStarted = false;
+        // transactionStarted is now defined in outer scope
 
         // Batch configuration
         const BATCH_SIZE = 1000;
