@@ -281,6 +281,11 @@ export async function POST(request) {
         }
         console.error("Flexible Import Error", error);
 
+        // Determine status code: 
+        // If we have collected row errors, it means the process worked but data was invalid -> 422
+        // If no row errors are recorded but we crashed, it's likely a system/connection error -> 500
+        const status = errors.length > 0 ? 422 : 500;
+
         return Response.json(
             {
                 error: "Failed to process import",
@@ -292,7 +297,7 @@ export async function POST(request) {
                     errorRows,
                 },
             },
-            { status: 500 }
+            { status }
         );
     } finally {
         if (client) client.release();
