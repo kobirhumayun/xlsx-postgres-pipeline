@@ -192,14 +192,26 @@ export async function POST(request) {
             // Row 1 is header
             if (row.number === 1) {
                 // Header row
+                const normalizeCell = (val) => {
+                    if (!val) return "";
+                    if (typeof val === 'object') {
+                        if (val.text) return val.text;
+                        if (val.result) return val.result;
+                        // Fallback for other object types if any
+                        // ExcelJS Hyperlink: { text: '...', hyperlink: '...' }
+                        return JSON.stringify(val);
+                    }
+                    return String(val);
+                };
+
                 const rawValues = Array.isArray(row.values) ? row.values : [];
                 if (rawValues.length > 1) {
-                    headers = rawValues.slice(1).map(v => String(v || "").trim()).filter(Boolean);
+                    headers = rawValues.slice(1).map(v => normalizeCell(v).trim()).filter(Boolean);
                 } else {
                     if (row.cellCount > 0) {
                         const extracted = [];
                         for (let i = 1; i <= row.cellCount; i++) {
-                            extracted.push(String(row.getCell(i).value || "").trim());
+                            extracted.push(normalizeCell(row.getCell(i).value).trim());
                         }
                         headers = extracted.filter(Boolean);
                     }
