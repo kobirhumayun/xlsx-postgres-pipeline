@@ -2,6 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { fetchJson } from "@/lib/api-client";
+import { Trash2, Save, Play, Download } from "lucide-react";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export default function QueryPage() {
     const [query, setQuery] = useState("");
@@ -16,11 +29,26 @@ export default function QueryPage() {
     const [tableList, setTableList] = useState([]);
     const [selectedDb, setSelectedDb] = useState("");
 
+    // Saved Queries State
+    const [savedQueries, setSavedQueries] = useState([]);
+    const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
+    const [newQueryName, setNewQueryName] = useState("");
+    const [newQueryDesc, setNewQueryDesc] = useState("");
+    const [isSaving, setIsSaving] = useState(false);
+
     useEffect(() => {
         fetchJson("/api/structure").then(data => {
             if (data.items) setDbList(data.items);
         }).catch(console.error);
+
+        loadSavedQueries();
     }, []);
+
+    const loadSavedQueries = () => {
+        fetchJson("/api/saved-queries").then(data => {
+            if (Array.isArray(data)) setSavedQueries(data);
+        }).catch(console.error);
+    };
 
     useEffect(() => {
         if (selectedDb) {
@@ -93,6 +121,49 @@ export default function QueryPage() {
         }
     };
 
+    const handleSaveQuery = async () => {
+        if (!newQueryName.trim() || !query.trim()) return;
+        setIsSaving(true);
+        try {
+            await fetchJson("/api/saved-queries", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: newQueryName,
+                    description: newQueryDesc,
+                    query: query,
+                    databaseName: databaseName
+                }),
+            });
+            setIsSaveDialogOpen(false);
+            setNewQueryName("");
+            setNewQueryDesc("");
+            loadSavedQueries();
+        } catch (err) {
+            console.error(err);
+            setError(err.message || "Failed to save query");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDeleteQuery = async (id, e) => {
+        e.stopPropagation();
+        if (!confirm("Are you sure you want to delete this saved query?")) return;
+        try {
+            await fetch("/api/saved-queries?id=" + id, { method: "DELETE" });
+            loadSavedQueries();
+        } catch (err) {
+            console.error(err);
+            setError("Failed to delete query");
+        }
+    };
+
+    const loadQueryIntoEditor = (sq) => {
+        setQuery(sq.query);
+        if (sq.databaseName) setDatabaseName(sq.databaseName);
+    };
+
     const insertTableName = (fullName) => {
         setQuery(prev => prev + ` ${fullName} `);
     };
@@ -114,9 +185,9 @@ export default function QueryPage() {
 
                 <div className="grid gap-6 lg:grid-cols-4">
 
-                    {/* Sidebar: Schema Browser */}
+                    {/* Sidebar: Schema Browser & Saved Queries */}
                     <aside className="lg:col-span-1 space-y-4">
-                        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm h-full">
+                        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
                             <h2 className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500 p-2 rounded mb-2">
                                 Schema Browser
                             </h2>
@@ -134,7 +205,7 @@ export default function QueryPage() {
 
                             <div className="mt-4">
                                 <h3 className="text-xs font-semibold text-zinc-400 uppercase mb-2">Tables</h3>
-                                <ul className="space-y-1 max-h-[400px] overflow-y-auto">
+                                <ul className="space-y-1 max-h-[300px] overflow-y-auto">
                                     {tableList.map(t => (
                                         <li key={t.fullName}>
                                             <button
@@ -150,6 +221,36 @@ export default function QueryPage() {
                                         <li className="text-xs text-zinc-400 italic px-2">No tables found (public)</li>
                                     )}
                                 </ul>
+                            </div>
+                        </div>
+
+                        {/* Saved Queries List */}
+                        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm flex flex-col">
+                            <h2 className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500 p-2 rounded mb-2">
+                                Saved Queries
+                            </h2>
+                            <div className="flex-1 overflow-y-auto max-h-[300px]">
+                                {savedQueries.length === 0 ? (
+                                    <p className="text-xs text-zinc-400 italic px-2">No saved queries</p>
+                                ) : (
+                                    <ul className="space-y-2">
+                                        {savedQueries.map(sq => (
+                                            <li key={sq.id} className="group flex items-start justify-between rounded p-2 hover:bg-zinc-50 border border-transparent hover:border-zinc-100 cursor-pointer" onClick={() => loadQueryIntoEditor(sq)}>
+                                                <div className="overflow-hidden">
+                                                    <p className="text-sm font-medium text-zinc-900 truncate" title={sq.name}>{sq.name}</p>
+                                                    {sq.description && <p className="text-xs text-zinc-500 truncate" title={sq.description}>{sq.description}</p>}
+                                                </div>
+                                                <button
+                                                    onClick={(e) => handleDeleteQuery(sq.id, e)}
+                                                    className="opacity-0 group-hover:opacity-100 p-1 text-zinc-400 hover:text-red-600 transition-opacity"
+                                                    title="Delete"
+                                                >
+                                                    <Trash2 className="w-3 h-3" />
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
                             </div>
                         </div>
                     </aside>
@@ -179,20 +280,71 @@ export default function QueryPage() {
                             </label>
 
                             <div className="flex items-center gap-3">
-                                <button
+                                <Button
                                     onClick={handleRun}
                                     disabled={loading}
                                     className="rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-50"
                                 >
+                                    <Play className="w-4 h-4 mr-2" />
                                     {loading ? "Running..." : "Run Query"}
-                                </button>
-                                <button
+                                </Button>
+                                <Button
+                                    variant="outline"
                                     onClick={handleExport}
                                     disabled={isExporting}
                                     className="rounded-full border border-zinc-200 bg-white px-5 py-2 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 disabled:opacity-50"
                                 >
+                                    <Download className="w-4 h-4 mr-2" />
                                     {isExporting ? "Exporting..." : "Export to Excel"}
-                                </button>
+                                </Button>
+
+                                <div className="flex-1" />
+
+                                <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
+                                    <DialogTrigger asChild>
+                                        <Button variant="outline" className="rounded-full">
+                                            <Save className="w-4 h-4 mr-2" />
+                                            Save Query
+                                        </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="sm:max-w-[425px]">
+                                        <DialogHeader>
+                                            <DialogTitle>Save Query</DialogTitle>
+                                            <DialogDescription>
+                                                Save this query for future use.
+                                            </DialogDescription>
+                                        </DialogHeader>
+                                        <div className="grid gap-4 py-4">
+                                            <div className="grid grid-cols-4 items-center gap-4">
+                                                <Label htmlFor="name" className="text-right">
+                                                    Name
+                                                </Label>
+                                                <Input
+                                                    id="name"
+                                                    value={newQueryName}
+                                                    onChange={(e) => setNewQueryName(e.target.value)}
+                                                    className="col-span-3"
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-4 items-center gap-4">
+                                                <Label htmlFor="description" className="text-right">
+                                                    Description
+                                                </Label>
+                                                <Input
+                                                    id="description"
+                                                    value={newQueryDesc}
+                                                    onChange={(e) => setNewQueryDesc(e.target.value)}
+                                                    className="col-span-3"
+                                                />
+                                            </div>
+                                        </div>
+                                        <DialogFooter>
+                                            <Button type="submit" onClick={handleSaveQuery} disabled={isSaving}>
+                                                {isSaving ? "Saving..." : "Save changes"}
+                                            </Button>
+                                        </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
                             </div>
 
                             {error && (
