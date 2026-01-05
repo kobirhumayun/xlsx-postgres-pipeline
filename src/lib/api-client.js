@@ -36,7 +36,10 @@ export async function fetchJson(url, options = {}) {
     if (!response.ok) {
         let errorPayload = null;
         try {
-            errorPayload = await response.clone().json();
+            const text = await response.text();
+            if (text) {
+                errorPayload = JSON.parse(text);
+            }
         } catch (parseError) {
             errorPayload = null;
         }
