@@ -34,14 +34,21 @@ export async function fetchJson(url, options = {}) {
 
     // If not OK, try to parse error message from JSON, otherwise fallback to status text
     if (!response.ok) {
-        if (isJson) {
-            const errorPayload = await response.json();
+        let errorPayload = null;
+        try {
+            errorPayload = await response.clone().json();
+        } catch (parseError) {
+            errorPayload = null;
+        }
+
+        if (errorPayload) {
             const error = new Error(
                 errorPayload.error || errorPayload.message || "An error occurred"
             );
             error.payload = errorPayload;
             throw error;
         }
+
         // If not JSON (e.g. HTML 404/500 page), use status text
         throw new Error(`API Error: ${response.status} ${response.statusText}`);
     }
