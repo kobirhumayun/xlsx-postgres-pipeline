@@ -8,3 +8,13 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+model SavedQuery {
+  id           String   @id @default(uuid())
+  name         String
+  description  String?
+  query        String
+  databaseName String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
