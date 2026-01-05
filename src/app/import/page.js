@@ -195,9 +195,17 @@ export default function ImportPage() {
       if (error.payload?.summary) {
         setSummary(error.payload.summary);
       }
+      let errorMsg = error.message || "Failed to import file.";
+      if (error.payload?.mismatch) {
+        const m = error.payload.mismatch;
+        const details = [];
+        if (m.missingColumns?.length) details.push(`Missing: ${m.missingColumns.join(", ")}`);
+        if (m.extraHeaders?.length) details.push(`Extra: ${m.extraHeaders.join(", ")}`);
+        if (details.length) errorMsg += ` (${details.join("; ")})`;
+      }
       setStatus({
         type: "error",
-        message: error.message || "Failed to import file.",
+        message: errorMsg,
       });
     } finally {
       setLoading(false);

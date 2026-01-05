@@ -216,15 +216,18 @@ export async function POST(request) {
                 const extraHeaders = headers.filter(name => !expectedSet.has(name));
 
                 if (missingColumns.length || extraHeaders.length) {
+                    const mismatchDetails = {
+                        missingColumns,
+                        extraHeaders,
+                        expectedColumns: expectedHeaders,
+                        providedHeaders: headers,
+                    };
+                    console.warn("Import Header Mismatch:", JSON.stringify(mismatchDetails, null, 2));
+
                     return Response.json(
                         {
                             error: "Header mismatch with table columns.",
-                            mismatch: {
-                                missingColumns,
-                                extraHeaders,
-                                expectedColumns: expectedHeaders,
-                                providedHeaders: headers,
-                            },
+                            mismatch: mismatchDetails,
                         },
                         { status: 400 }
                     );
