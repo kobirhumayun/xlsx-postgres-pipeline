@@ -77,19 +77,55 @@ export async function POST(request) {
             return Response.json({ error: "Worksheet not found." }, { status: 400 });
         }
 
+        const parseTableName = (rawName) => {
+            const trimmed = rawName.trim();
+            const parts = trimmed.split(".");
+            if (parts.length > 1) {
+                const schema = parts.shift();
+                const name = parts.join(".");
+                return { schema, name };
+            }
+            return { schema: "public", name: trimmed };
+        };
+
         // Connect to DB
         pool = getDbPool(databaseName);
         client = await pool.connect();
 
-        await client.query("BEGIN");
+        const { schema: tableSchema, name: tableBaseName } = parseTableName(tableName);
+        const columnResult = await client.query(
+            `
+        SELECT column_name as name,
+               data_type,
+               is_nullable,
+               ordinal_position
+        FROM information_schema.columns
+        WHERE table_schema = $1
+          AND table_name = $2
+        ORDER BY ordinal_position
+      `,
+            [tableSchema, tableBaseName]
+        );
+
+        const tableColumns = columnResult.rows ?? [];
+        if (!tableColumns.length) {
+            return Response.json(
+                { error: "Table not found or has no columns." },
+                { status: 400 }
+            );
+        }
 
         let headers = [];
+        let transactionStarted = false;
 
         // Batch configuration
         const BATCH_SIZE = 1000;
         let batchData = []; // Store { rowNumber, values }
 
         const quoteId = (id) => `"${id.replace(/"/g, '""')}"`;
+        const safeTableName = tableSchema
+            ? `${quoteId(tableSchema)}.${quoteId(tableBaseName)}`
+            : quoteId(tableBaseName);
 
         const flushBatch = async () => {
             if (batchData.length === 0) return;
@@ -109,7 +145,6 @@ export async function POST(request) {
                 valuesClause.push(`(${rowParams.join(',')})`);
             }
 
-            const safeTableName = quoteId(tableName);
             const safeColumns = headers.map(quoteId).join(", ");
             const finalQuery = `INSERT INTO ${safeTableName} (${safeColumns}) VALUES ${valuesClause.join(',')}`;
 
@@ -172,6 +207,30 @@ export async function POST(request) {
                 if (!headers.length) {
                     throw new Error("Header row is empty or invalid.");
                 }
+
+                const expectedHeaders = tableColumns.map(column => column.name);
+                const headerSet = new Set(headers);
+                const expectedSet = new Set(expectedHeaders);
+                const missingColumns = expectedHeaders.filter(name => !headerSet.has(name));
+                const extraHeaders = headers.filter(name => !expectedSet.has(name));
+
+                if (missingColumns.length || extraHeaders.length) {
+                    return Response.json(
+                        {
+                            error: "Header mismatch with table columns.",
+                            mismatch: {
+                                missingColumns,
+                                extraHeaders,
+                                expectedColumns: expectedHeaders,
+                                providedHeaders: headers,
+                            },
+                        },
+                        { status: 400 }
+                    );
+                }
+
+                await client.query("BEGIN");
+                transactionStarted = true;
                 continue;
             }
 
@@ -203,7 +262,9 @@ export async function POST(request) {
 
         await flushBatch();
 
-        await client.query("COMMIT");
+        if (transactionStarted) {
+            await client.query("COMMIT");
+        }
 
         return Response.json({
             summary: {
@@ -215,7 +276,7 @@ export async function POST(request) {
         });
 
     } catch (error) {
-        if (client) {
+        if (client && transactionStarted) {
             try { await client.query("ROLLBACK"); } catch (e) { console.error(e); }
         }
         console.error("Flexible Import Error", error);

@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const database = searchParams.get("database");
+    const table = searchParams.get("table");
 
     let pool;
     let client;
@@ -23,6 +24,33 @@ export async function GET(request) {
             return Response.json({
                 type: "databases",
                 items: result.rows.map(r => r.name)
+            });
+        } else if (table) {
+            // List Columns for specific table
+            pool = getDbPool(database);
+            client = await pool.connect();
+
+            const [schema, ...nameParts] = table.split(".");
+            const tableSchema = nameParts.length ? schema : "public";
+            const tableName = nameParts.length ? nameParts.join(".") : schema;
+
+            return Response.json({
+                type: "columns",
+                items: (
+                    await client.query(
+                        `
+        SELECT column_name as name,
+               data_type,
+               is_nullable,
+               ordinal_position
+        FROM information_schema.columns
+        WHERE table_schema = $1
+          AND table_name = $2
+        ORDER BY ordinal_position
+      `,
+                        [tableSchema, tableName]
+                    )
+                ).rows
             });
         } else {
             // List Tables in specific Database
