@@ -16,6 +16,7 @@ export default function ImportPage() {
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState({ type: "idle", message: "" });
   const [loading, setLoading] = useState(false);
+  const [downloadingReport, setDownloadingReport] = useState(false);
 
   // Flexible import state
   const [flexibleFormState, setFlexibleFormState] = useState(emptyFlexibleForm);
@@ -149,6 +150,12 @@ export default function ImportPage() {
     return { missingColumns, extraHeaders };
   }, [fileHeaders, tableColumns]);
 
+  const errorReportHeaders = useMemo(() => {
+    if (fileHeaders.length) return fileHeaders;
+    if (tableColumns.length) return tableColumns.map(column => column.name);
+    return [];
+  }, [fileHeaders, tableColumns]);
+
   const handleFlexibleChange = (event) => {
     const { name, value } = event.target;
     setFlexibleFormState((prev) => ({ ...prev, [name]: value }));
@@ -201,6 +208,46 @@ export default function ImportPage() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDownloadErrorReport = async () => {
+    if (!errors.length) return;
+    setDownloadingReport(true);
+
+    try {
+      const response = await fetch("/api/import/error-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          headers: errorReportHeaders,
+          errors,
+          format: "xlsx",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate error report.");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+      link.href = url;
+      link.download = `import-error-report-${timestamp}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to download error report", error);
+      setStatus({
+        type: "error",
+        message: error.message || "Failed to download error report.",
+      });
+    } finally {
+      setDownloadingReport(false);
     }
   };
 
@@ -434,9 +481,21 @@ export default function ImportPage() {
         <section className="grid gap-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Row errors</h2>
-            <span className="text-sm text-zinc-500">
-              {errors.length} rows
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-zinc-500">
+                {errors.length} rows
+              </span>
+              {errors.length > 0 && (
+                <button
+                  className="rounded-full border border-zinc-200 px-4 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
+                  type="button"
+                  onClick={handleDownloadErrorReport}
+                  disabled={downloadingReport}
+                >
+                  {downloadingReport ? "Preparing report..." : "Download error report"}
+                </button>
+              )}
+            </div>
           </div>
           <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
             <table className="min-w-full text-left text-sm">

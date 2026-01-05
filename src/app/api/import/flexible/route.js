@@ -172,7 +172,8 @@ export async function POST(request) {
                         errorRows++;
                         errors.push({
                             rowNumber: item.rowNumber,
-                            error: rowErr.message
+                            error: rowErr.message,
+                            values: item.values,
                         });
                         // We could continue to find ALL errors in this batch, or stop at the first one.
                         // For "All-or-nothing" robust import with feedback, finding ALL errors in the failing batch is helpful.
