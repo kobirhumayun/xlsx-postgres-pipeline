@@ -197,6 +197,13 @@ export async function POST(request) {
                     if (typeof val === 'object') {
                         if (val.text) return val.text;
                         if (val.result) return val.result;
+
+                        if (val.sharedString !== undefined) {
+                            if (workbookReader.sharedStrings && workbookReader.sharedStrings[val.sharedString]) {
+                                return String(workbookReader.sharedStrings[val.sharedString]);
+                            }
+                        }
+
                         // Fallback for other object types if any
                         // ExcelJS Hyperlink: { text: '...', hyperlink: '...' }
                         return JSON.stringify(val);
