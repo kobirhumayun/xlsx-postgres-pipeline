@@ -16,20 +16,32 @@ export default function QueryPage() {
     const [tableList, setTableList] = useState([]);
     const [selectedDb, setSelectedDb] = useState("");
 
+    // Saved Queries State
+    const [savedQueries, setSavedQueries] = useState([]);
+    const [showSaveModal, setShowSaveModal] = useState(false);
+    const [newQueryName, setNewQueryName] = useState("");
+
     useEffect(() => {
         fetchJson("/api/structure").then(data => {
             if (data.items) setDbList(data.items);
         }).catch(console.error);
+
+        loadSavedQueries();
     }, []);
+
+    const loadSavedQueries = () => {
+        fetchJson("/api/saved-queries")
+            .then(data => {
+                if (data.items) setSavedQueries(data.items);
+            })
+            .catch(console.error);
+    };
 
     useEffect(() => {
         if (selectedDb) {
             fetchJson(`/api/structure?database=${selectedDb}`).then(data => {
                 if (data.type === 'tables') setTableList(data.items);
             }).catch(console.error);
-
-            // Auto-set the query database context if desired, or let user type it manually?
-            // Simpler to set the field.
             setDatabaseName(selectedDb);
         } else {
             setTableList([]);
@@ -74,7 +86,6 @@ export default function QueryPage() {
                 throw new Error(json.error || "Export failed");
             }
 
-            // Handle file download
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement("a");
@@ -91,6 +102,45 @@ export default function QueryPage() {
         } finally {
             setIsExporting(false);
         }
+    };
+
+    const handleSaveQuery = async () => {
+        if (!newQueryName.trim() || !query.trim()) return;
+
+        try {
+            await fetchJson("/api/saved-queries", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    name: newQueryName,
+                    query,
+                    database: databaseName
+                }),
+            });
+            setShowSaveModal(false);
+            setNewQueryName("");
+            loadSavedQueries();
+        } catch (err) {
+            console.error(err);
+            alert("Failed to save query");
+        }
+    };
+
+    const handleDeleteQuery = async (id, e) => {
+        e.stopPropagation();
+        if (!confirm("Are you sure you want to delete this query?")) return;
+
+        try {
+            await fetch(`/api/saved-queries?id=${id}`, { method: "DELETE" });
+            loadSavedQueries();
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const loadQuery = (saved) => {
+        setQuery(saved.query);
+        if (saved.database) setDatabaseName(saved.database);
     };
 
     const insertTableName = (fullName) => {
@@ -114,9 +164,10 @@ export default function QueryPage() {
 
                 <div className="grid gap-6 lg:grid-cols-4">
 
-                    {/* Sidebar: Schema Browser */}
-                    <aside className="lg:col-span-1 space-y-4">
-                        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm h-full">
+                    {/* Sidebar */}
+                    <aside className="lg:col-span-1 space-y-6">
+                        {/* Schema Browser */}
+                        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
                             <h2 className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500 p-2 rounded mb-2">
                                 Schema Browser
                             </h2>
@@ -134,7 +185,7 @@ export default function QueryPage() {
 
                             <div className="mt-4">
                                 <h3 className="text-xs font-semibold text-zinc-400 uppercase mb-2">Tables</h3>
-                                <ul className="space-y-1 max-h-[400px] overflow-y-auto">
+                                <ul className="space-y-1 max-h-[300px] overflow-y-auto">
                                     {tableList.map(t => (
                                         <li key={t.fullName}>
                                             <button
@@ -151,6 +202,36 @@ export default function QueryPage() {
                                     )}
                                 </ul>
                             </div>
+                        </div>
+
+                        {/* Saved Queries */}
+                        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+                            <h2 className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500 p-2 rounded mb-2">
+                                Saved Queries
+                            </h2>
+                            <ul className="space-y-1 max-h-[300px] overflow-y-auto">
+                                {savedQueries.map(sq => (
+                                    <li key={sq.id} className="group relative">
+                                        <button
+                                            onClick={() => loadQuery(sq)}
+                                            className="text-left w-full text-sm text-zinc-700 hover:bg-zinc-100 px-2 py-2 rounded flex flex-col gap-0.5"
+                                        >
+                                            <span className="font-medium truncate">{sq.name}</span>
+                                            <span className="text-xs text-zinc-400 truncate">{sq.database || "default"}</span>
+                                        </button>
+                                        <button
+                                            onClick={(e) => handleDeleteQuery(sq.id, e)}
+                                            className="absolute right-2 top-2 hidden group-hover:block text-zinc-400 hover:text-red-500"
+                                            title="Delete"
+                                        >
+                                            &times;
+                                        </button>
+                                    </li>
+                                ))}
+                                {savedQueries.length === 0 && (
+                                    <li className="text-xs text-zinc-400 italic px-2">No saved queries</li>
+                                )}
+                            </ul>
                         </div>
                     </aside>
 
@@ -192,6 +273,12 @@ export default function QueryPage() {
                                     className="rounded-full border border-zinc-200 bg-white px-5 py-2 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-50 disabled:opacity-50"
                                 >
                                     {isExporting ? "Exporting..." : "Export to Excel"}
+                                </button>
+                                <button
+                                    onClick={() => setShowSaveModal(true)}
+                                    className="ml-auto text-sm font-medium text-zinc-500 hover:text-zinc-900"
+                                >
+                                    Save Query
                                 </button>
                             </div>
 
@@ -240,6 +327,36 @@ export default function QueryPage() {
                             )}
                         </div>
                     </section>
+                )}
+
+                {/* Save Modal */}
+                {showSaveModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                        <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+                            <h3 className="mb-4 text-lg font-semibold">Save Query</h3>
+                            <input
+                                autoFocus
+                                className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm mb-4"
+                                placeholder="Query Name (e.g. Monthly Revenue)"
+                                value={newQueryName}
+                                onChange={(e) => setNewQueryName(e.target.value)}
+                            />
+                            <div className="flex justify-end gap-2">
+                                <button
+                                    onClick={() => setShowSaveModal(false)}
+                                    className="rounded-lg px-4 py-2 text-sm font-medium text-zinc-500 hover:bg-zinc-100"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSaveQuery}
+                                    className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                                >
+                                    Save
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 )}
             </main>
         </div>
