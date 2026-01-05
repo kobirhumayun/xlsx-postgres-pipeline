@@ -88,6 +88,27 @@ export async function POST(request) {
             return { schema: "public", name: trimmed };
         };
 
+        const sanitizeErrorValue = (value) => {
+            if (value === null || value === undefined) return null;
+            if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+                return value;
+            }
+            if (value instanceof Date) {
+                return value.toISOString();
+            }
+            if (typeof value === "object") {
+                if ("text" in value && value.text) return String(value.text);
+                if ("result" in value && value.result) return String(value.result);
+                if ("formula" in value && value.result !== undefined) return String(value.result ?? "");
+                try {
+                    return JSON.stringify(value);
+                } catch (e) {
+                    return String(value);
+                }
+            }
+            return String(value);
+        };
+
         // Connect to DB
         pool = getDbPool(databaseName);
         client = await pool.connect();
@@ -173,7 +194,7 @@ export async function POST(request) {
                         errors.push({
                             rowNumber: item.rowNumber,
                             error: rowErr.message,
-                            values: item.values,
+                            values: item.values.map(sanitizeErrorValue),
                         });
                         // We could continue to find ALL errors in this batch, or stop at the first one.
                         // For "All-or-nothing" robust import with feedback, finding ALL errors in the failing batch is helpful.
