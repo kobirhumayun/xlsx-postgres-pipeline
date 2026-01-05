@@ -14,3 +14,4 @@ docker-compose.*
 backups/
 *.sql
 *.sql.gz
+!prisma/migrations/**/*.sql
