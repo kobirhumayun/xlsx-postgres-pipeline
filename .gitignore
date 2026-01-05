@@ -45,3 +45,4 @@ next-env.d.ts
 /backups
 *.sql
 *.sql.gz
+!prisma/migrations/**/*.sql
