@@ -10,6 +10,8 @@ const emptyFlexibleForm = {
   sheetName: "",
 };
 
+const POSTGRES_TYPES = ["TEXT", "NUMERIC", "INTEGER", "BOOLEAN", "DATE", "TIMESTAMP", "JSONB"];
+
 export default function ImportPage() {
   const [summary, setSummary] = useState(null);
   const [errors, setErrors] = useState([]);
@@ -25,6 +27,11 @@ export default function ImportPage() {
   const [tableColumnsStatus, setTableColumnsStatus] = useState({ type: "idle", message: "" });
   const [fileHeaders, setFileHeaders] = useState([]);
   const [fileHeaderStatus, setFileHeaderStatus] = useState({ type: "idle", message: "" });
+
+  // Creation Mode State
+  const [creationMode, setCreationMode] = useState(false);
+  const [newTableName, setNewTableName] = useState("");
+  const [previewColumns, setPreviewColumns] = useState([]); // { name: string, type: string }[]
 
   // Load databases on mount
   useEffect(() => {
@@ -44,8 +51,10 @@ export default function ImportPage() {
     }
   }, [flexibleFormState.databaseName]);
 
-  // Load table columns when table changes
+  // Load table columns when table changes (ONLY if not in creation mode)
   useEffect(() => {
+    if (creationMode) return;
+
     if (flexibleFormState.databaseName && flexibleFormState.tableName) {
       setTableColumnsStatus({ type: "loading", message: "Loading table columns..." });
       fetchJson(
@@ -69,12 +78,13 @@ export default function ImportPage() {
       setTableColumns([]);
       setTableColumnsStatus({ type: "idle", message: "" });
     }
-  }, [flexibleFormState.databaseName, flexibleFormState.tableName]);
+  }, [flexibleFormState.databaseName, flexibleFormState.tableName, creationMode]);
 
   useEffect(() => {
     if (!file) {
       setFileHeaders([]);
       setFileHeaderStatus({ type: "idle", message: "" });
+      setPreviewColumns([]);
       return;
     }
 
@@ -118,6 +128,14 @@ export default function ImportPage() {
         if (!cancelled) {
           setFileHeaders(extracted);
           setFileHeaderStatus({ type: "success", message: "" });
+
+          // Auto-populate preview columns for creation mode
+          // Simple sanitization for column names: lowercase, replace spaces with _, remove special chars
+          const initialColumns = extracted.map(h => ({
+            name: h.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_'),
+            type: "TEXT"
+          }));
+          setPreviewColumns(initialColumns);
         }
       } catch (error) {
         console.error("Failed to read headers", error);
@@ -136,6 +154,8 @@ export default function ImportPage() {
   }, [file, flexibleFormState.sheetName]);
 
   const headerComparison = useMemo(() => {
+    if (creationMode) return { missingColumns: [], extraHeaders: [] }; // Not relevant in creation mode
+
     if (!tableColumns.length || !fileHeaders.length) {
       return { missingColumns: [], extraHeaders: [] };
     }
@@ -147,7 +167,7 @@ export default function ImportPage() {
     const extraHeaders = fileHeaders.filter(name => !tableSet.has(name));
 
     return { missingColumns, extraHeaders };
-  }, [fileHeaders, tableColumns]);
+  }, [fileHeaders, tableColumns, creationMode]);
 
   const handleFlexibleChange = (event) => {
     const { name, value } = event.target;
@@ -159,12 +179,62 @@ export default function ImportPage() {
     setFile(nextFile);
   };
 
+  const handlePreviewColumnChange = (index, field, value) => {
+    const newCols = [...previewColumns];
+    newCols[index] = { ...newCols[index], [field]: value };
+    setPreviewColumns(newCols);
+  };
+
+  const handleTableCreate = async () => {
+    if (!newTableName || !previewColumns.length) return false;
+
+    try {
+      setLoading(true);
+      setStatus({ type: "loading", message: "Creating table..." });
+
+      const res = await fetchJson("/api/structure", {
+        method: "POST",
+        body: {
+          databaseName: flexibleFormState.databaseName,
+          tableName: newTableName,
+          columns: previewColumns
+        }
+      });
+
+      // Refresh table list
+      if (flexibleFormState.databaseName) {
+        const data = await fetchJson(`/api/structure?database=${flexibleFormState.databaseName}`);
+        if (data.type === 'tables') setTableList(data.items);
+      }
+
+      // Switch mode and select new table
+      setFlexibleFormState(prev => ({ ...prev, tableName: res.fullName }));
+      setCreationMode(false);
+      setStatus({ type: "success", message: `Table ${res.fullName} created! Ready to import.` });
+      return true;
+    } catch (err) {
+      console.error("Failed to create table", err);
+      setStatus({ type: "error", message: err.message || "Failed to create table" });
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!file) {
       setStatus({ type: "error", message: "Please select a file to upload." });
       return;
     }
+
+    if (creationMode) {
+      // Create table first
+      const success = await handleTableCreate();
+      if (!success) return; // Stop if creation failed
+      // Fall through to import...
+    }
+
     setStatus({ type: "idle", message: "" });
     setSummary(null);
     setErrors([]);
@@ -175,7 +245,22 @@ export default function ImportPage() {
       const url = "/api/import/flexible";
 
       if (flexibleFormState.databaseName) payload.append("databaseName", flexibleFormState.databaseName);
-      payload.append("tableName", flexibleFormState.tableName);
+
+      // If we just created a table, flexibleFormState.tableName is already updated by handleTableCreate
+      // However, React state updates might be async? 
+      // Actually, since we await handleTableCreate, and it calls setFlexibleFormState, 
+      // but in the SAME render cycle the state won't be updated yet for this function scope.
+      // We need to use the new name if we just created it.
+
+      let targetTableName = flexibleFormState.tableName;
+      if (creationMode) {
+        // We need to reconstruct the full name or pass it back from handleTableCreate
+        // Ideally handleTableCreate should return the new name or we assume logic.
+        // Let's rely on constructing it: public.newTableName (since our API returns public.name)
+        targetTableName = `public.${newTableName}`;
+      }
+
+      payload.append("tableName", targetTableName);
       payload.append("sheetName", flexibleFormState.sheetName);
       payload.append("file", file);
 
@@ -228,14 +313,32 @@ export default function ImportPage() {
         </header>
 
         <section className="grid gap-6 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <div>
-            <h2 className="text-lg font-semibold">
-              Flexible Import
-            </h2>
-            <p className="text-sm text-zinc-500">
-              Import into any database table. Ensure Excel headers match table columns.
-            </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">
+                Flexible Import
+              </h2>
+              <p className="text-sm text-zinc-500">
+                Import into any database table. Ensure Excel headers match table columns.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCreationMode(!creationMode);
+                setStatus({ type: "idle", message: "" });
+                setNewTableName("");
+              }}
+              className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${creationMode
+                  ? "bg-zinc-900 text-white"
+                  : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                }`}
+            >
+              {creationMode ? "Cancel Creation" : "+ Create New Table"}
+            </button>
           </div>
+
           <form className="grid gap-4" onSubmit={handleSubmit}>
             <label className="flex flex-col gap-2 text-sm font-medium">
               Database
@@ -252,23 +355,43 @@ export default function ImportPage() {
               </select>
               <span className="text-xs text-zinc-500">Select database to populate table list.</span>
             </label>
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              Table Name
-              <input
-                className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                name="tableName"
-                value={flexibleFormState.tableName}
-                onChange={handleFlexibleChange}
-                list="table-options"
-                placeholder="public.my_table"
-                required
-              />
-              <datalist id="table-options">
-                {tableList.map(t => (
-                  <option key={t.fullName} value={t.fullName} />
-                ))}
-              </datalist>
-            </label>
+
+            {!creationMode ? (
+              <label className="flex flex-col gap-2 text-sm font-medium">
+                Table Name
+                <input
+                  className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                  name="tableName"
+                  value={flexibleFormState.tableName}
+                  onChange={handleFlexibleChange}
+                  list="table-options"
+                  placeholder="public.my_table"
+                  required={!creationMode}
+                />
+                <datalist id="table-options">
+                  {tableList.map(t => (
+                    <option key={t.fullName} value={t.fullName} />
+                  ))}
+                </datalist>
+              </label>
+            ) : (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <label className="flex flex-col gap-2 text-sm font-medium text-blue-900">
+                  New Table Name
+                  <input
+                    className="rounded-lg border border-blue-200 px-3 py-2 text-sm"
+                    value={newTableName}
+                    onChange={(e) => setNewTableName(e.target.value)}
+                    placeholder="my_new_table"
+                    pattern="^[a-zA-Z_][a-zA-Z0-9_]*$"
+                    title="Alphanumeric and underscores only, must start with letter."
+                    required={creationMode}
+                  />
+                  <span className="text-xs text-blue-700">Name for the new table. (Letters, numbers, underscores only)</span>
+                </label>
+              </div>
+            )}
+
             <label className="flex flex-col gap-2 text-sm font-medium">
               Sheet name (optional)
               <input
@@ -290,117 +413,166 @@ export default function ImportPage() {
                 required
               />
             </label>
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-semibold text-zinc-900">Table columns</h3>
-                {tableColumnsStatus.message && (
-                  <span className="text-xs text-zinc-500">{tableColumnsStatus.message}</span>
-                )}
+
+            {/* Creation Mode Editor */}
+            {creationMode && file && (
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4 text-sm">
+                <h3 className="mb-3 text-sm font-semibold text-zinc-900">Define Table Schema</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="border-b border-zinc-200 text-zinc-500">
+                      <tr>
+                        <th className="py-2 pr-4">Excel Header</th>
+                        <th className="py-2 pr-4">Column Name (SQL)</th>
+                        <th className="py-2">Data Type</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewColumns.map((col, idx) => (
+                        <tr key={idx} className="border-b border-zinc-100 last:border-0">
+                          <td className="py-2 pr-4 font-medium text-zinc-700">
+                            {fileHeaders[idx] || <i>(Column {idx + 1})</i>}
+                          </td>
+                          <td className="py-2 pr-4">
+                            <input
+                              className="w-full rounded border border-zinc-200 px-2 py-1"
+                              value={col.name}
+                              onChange={(e) => handlePreviewColumnChange(idx, 'name', e.target.value)}
+                            />
+                          </td>
+                          <td className="py-2">
+                            <select
+                              className="w-full rounded border border-zinc-200 px-2 py-1"
+                              value={col.type}
+                              onChange={(e) => handlePreviewColumnChange(idx, 'type', e.target.value)}
+                            >
+                              {POSTGRES_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {previewColumns.length === 0 && <p className="text-zinc-500">No columns detected.</p>}
               </div>
-              {!tableColumns.length && (
-                <p className="mt-2 text-xs text-zinc-500">
-                  Select a database and table to load columns.
-                </p>
-              )}
-              {tableColumns.length > 0 && (
-                <div className="mt-3 grid gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                      Required columns
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {tableColumns.filter(column => column.is_nullable === "NO").map(column => {
-                        const isMissing = fileHeaders.length > 0 && headerComparison.missingColumns.includes(column.name);
-                        return (
-                          <span
-                            key={column.name}
-                            className={`rounded-full px-3 py-1 text-xs font-medium ${isMissing
-                              ? "bg-red-100 text-red-700"
-                              : "bg-emerald-100 text-emerald-700"
-                              }`}
-                          >
-                            {column.name}
-                          </span>
-                        );
-                      })}
-                      {tableColumns.filter(column => column.is_nullable === "NO").length === 0 && (
-                        <span className="text-xs text-zinc-500">No required columns.</span>
+            )}
+
+            {/* Existing Table Inspector */}
+            {!creationMode && (
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-zinc-900">Table columns</h3>
+                  {tableColumnsStatus.message && (
+                    <span className="text-xs text-zinc-500">{tableColumnsStatus.message}</span>
+                  )}
+                </div>
+                {!tableColumns.length && (
+                  <p className="mt-2 text-xs text-zinc-500">
+                    Select a database and table to load columns.
+                  </p>
+                )}
+                {tableColumns.length > 0 && (
+                  <div className="mt-3 grid gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                        Required columns
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {tableColumns.filter(column => column.is_nullable === "NO").map(column => {
+                          const isMissing = fileHeaders.length > 0 && headerComparison.missingColumns.includes(column.name);
+                          return (
+                            <span
+                              key={column.name}
+                              className={`rounded-full px-3 py-1 text-xs font-medium ${isMissing
+                                ? "bg-red-100 text-red-700"
+                                : "bg-emerald-100 text-emerald-700"
+                                }`}
+                            >
+                              {column.name}
+                            </span>
+                          );
+                        })}
+                        {tableColumns.filter(column => column.is_nullable === "NO").length === 0 && (
+                          <span className="text-xs text-zinc-500">No required columns.</span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                        Column details
+                      </p>
+                      <div className="mt-2 grid gap-2 md:grid-cols-2">
+                        {tableColumns.map(column => {
+                          const isMissing = fileHeaders.length > 0 && headerComparison.missingColumns.includes(column.name);
+                          return (
+                            <div
+                              key={column.name}
+                              className={`rounded-lg border px-3 py-2 text-xs ${isMissing ? "border-red-200 bg-red-50 text-red-700" : "border-zinc-200 bg-white text-zinc-700"
+                                }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold">{column.name}</span>
+                                <span className="text-[10px] uppercase tracking-wide text-zinc-400">
+                                  {column.is_nullable === "NO" ? "Required" : "Optional"}
+                                </span>
+                              </div>
+                              <div className="mt-1 text-[11px] text-zinc-500">
+                                {column.data_type} · Position {column.ordinal_position}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-dashed border-zinc-200 bg-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                        Header check
+                      </p>
+                      {fileHeaderStatus.message && (
+                        <p
+                          className={`mt-2 text-xs ${fileHeaderStatus.type === "error"
+                            ? "text-red-600"
+                            : "text-zinc-500"
+                            }`}
+                        >
+                          {fileHeaderStatus.message}
+                        </p>
+                      )}
+                      {!fileHeaders.length && !fileHeaderStatus.message && (
+                        <p className="mt-2 text-xs text-zinc-500">
+                          Upload a file to compare its headers to the table definition.
+                        </p>
+                      )}
+                      {fileHeaders.length > 0 && (
+                        <div className="mt-2 grid gap-2 text-xs">
+                          <div>
+                            <span className="font-semibold text-zinc-700">Missing columns:</span>{" "}
+                            {headerComparison.missingColumns.length
+                              ? headerComparison.missingColumns.join(", ")
+                              : "None"}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-zinc-700">Extra headers:</span>{" "}
+                            {headerComparison.extraHeaders.length
+                              ? headerComparison.extraHeaders.join(", ")
+                              : "None"}
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                      Column details
-                    </p>
-                    <div className="mt-2 grid gap-2 md:grid-cols-2">
-                      {tableColumns.map(column => {
-                        const isMissing = fileHeaders.length > 0 && headerComparison.missingColumns.includes(column.name);
-                        return (
-                          <div
-                            key={column.name}
-                            className={`rounded-lg border px-3 py-2 text-xs ${isMissing ? "border-red-200 bg-red-50 text-red-700" : "border-zinc-200 bg-white text-zinc-700"
-                              }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="font-semibold">{column.name}</span>
-                              <span className="text-[10px] uppercase tracking-wide text-zinc-400">
-                                {column.is_nullable === "NO" ? "Required" : "Optional"}
-                              </span>
-                            </div>
-                            <div className="mt-1 text-[11px] text-zinc-500">
-                              {column.data_type} · Position {column.ordinal_position}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-dashed border-zinc-200 bg-white p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                      Header check
-                    </p>
-                    {fileHeaderStatus.message && (
-                      <p
-                        className={`mt-2 text-xs ${fileHeaderStatus.type === "error"
-                          ? "text-red-600"
-                          : "text-zinc-500"
-                          }`}
-                      >
-                        {fileHeaderStatus.message}
-                      </p>
-                    )}
-                    {!fileHeaders.length && !fileHeaderStatus.message && (
-                      <p className="mt-2 text-xs text-zinc-500">
-                        Upload a file to compare its headers to the table definition.
-                      </p>
-                    )}
-                    {fileHeaders.length > 0 && (
-                      <div className="mt-2 grid gap-2 text-xs">
-                        <div>
-                          <span className="font-semibold text-zinc-700">Missing columns:</span>{" "}
-                          {headerComparison.missingColumns.length
-                            ? headerComparison.missingColumns.join(", ")
-                            : "None"}
-                        </div>
-                        <div>
-                          <span className="font-semibold text-zinc-700">Extra headers:</span>{" "}
-                          {headerComparison.extraHeaders.length
-                            ? headerComparison.extraHeaders.join(", ")
-                            : "None"}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-wrap items-center gap-3">
               <button
                 className="rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
                 type="submit"
                 disabled={loading}
               >
-                {loading ? "Importing..." : "Start import"}
+                {loading ? (creationMode ? "Creating & Importing..." : "Importing...") : (creationMode ? "Create & Import" : "Start import")}
               </button>
               {status.message && (
                 <span

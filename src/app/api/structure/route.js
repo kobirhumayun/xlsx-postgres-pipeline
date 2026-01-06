@@ -1,6 +1,21 @@
 import { getDbPool } from "@/lib/db";
+import { z } from "zod";
 
 export const dynamic = 'force-dynamic';
+
+const columnSchema = z.object({
+    name: z.string().regex(/^[a-zA-Z0-9_]+$/, "Invalid column name"),
+    type: z.enum([
+        "TEXT", "NUMERIC", "INTEGER", "BOOLEAN", "DATE", "TIMESTAMP", "JSONB"
+    ]),
+    primaryKey: z.boolean().optional()
+});
+
+const createTableSchema = z.object({
+    databaseName: z.string().optional(),
+    tableName: z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/, "Invalid table name").max(63),
+    columns: z.array(columnSchema).min(1)
+});
 
 export async function GET(request) {
     const { searchParams } = new URL(request.url);
@@ -81,6 +96,73 @@ export async function GET(request) {
         console.error("Structure API Error", error);
         return Response.json(
             { error: "Failed to fetch structure", details: error.message },
+            { status: 500 }
+        );
+    } finally {
+        if (client) client.release();
+        if (pool && pool !== getDbPool()) {
+            await pool.end();
+        }
+    }
+}
+
+export async function POST(request) {
+    let pool;
+    let client;
+    try {
+        const body = await request.json();
+        const parsed = createTableSchema.safeParse(body);
+
+        if (!parsed.success) {
+            return Response.json({ error: "Invalid request", details: parsed.error.flatten() }, { status: 400 });
+        }
+
+        const { databaseName, tableName, columns } = parsed.data;
+
+        pool = getDbPool(databaseName);
+        client = await pool.connect();
+
+        // 1. Check if table exists
+        // We assume 'public' schema for simplicity in creation unless specified in name.
+        // But the validator enforces simple names, so we force public schema to be safe.
+        const safeTableName = `public."${tableName}"`;
+
+        const checkExists = await client.query(`
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = $1
+            )
+        `, [tableName]);
+
+        if (checkExists.rows[0].exists) {
+            return Response.json({ error: "Table already exists." }, { status: 409 });
+        }
+
+        // 2. Construct CREATE TABLE statement
+        // Always add ID column
+        const columnDefs = [`"id" SERIAL PRIMARY KEY`];
+
+        for (const col of columns) {
+            if (col.name === 'id') continue; // Skip if user definition tries to override ID
+            columnDefs.push(`"${col.name}" ${col.type}`);
+        }
+
+        const query = `CREATE TABLE ${safeTableName} (${columnDefs.join(", ")})`;
+        
+        // 3. Execute
+        await client.query(query);
+
+        return Response.json({ 
+            success: true, 
+            message: `Table ${tableName} created successfully.`,
+            fullName: `public.${tableName}`
+        });
+
+    } catch (error) {
+        console.error("Create Table Error", error);
+        return Response.json(
+            { error: "Failed to create table", details: error.message },
             { status: 500 }
         );
     } finally {
