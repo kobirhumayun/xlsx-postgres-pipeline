@@ -2,7 +2,7 @@ import { Readable } from "stream";
 import ExcelJS from "exceljs";
 import { z } from "zod";
 import { getDbPool } from "@/lib/db";
-import { toTrimmedString, excelDateToISO } from "@/lib/ingest";
+import { parseValue } from "@/lib/ingest";
 
 // Reusing some helper logic, but keeping it simple for raw SQL approach
 // Since we are inserting into ANY table, we can't strongly type against Prisma schema here easily.
@@ -117,6 +117,40 @@ export async function POST(request) {
                 { status: 400 }
             );
         }
+
+        const columnTypeByName = new Map(
+            tableColumns.map((column) => [column.name, column.data_type])
+        );
+
+        const normalizeDataType = (dataType) => {
+            if (!dataType) return "text";
+            const normalized = dataType.toLowerCase();
+            if ([
+                "integer",
+                "bigint",
+                "smallint",
+                "numeric",
+                "real",
+                "double precision",
+                "decimal",
+            ].includes(normalized)) {
+                return "number";
+            }
+            if (normalized === "boolean") {
+                return "boolean";
+            }
+            if ([
+                "date",
+                "timestamp without time zone",
+                "timestamp with time zone",
+                "time without time zone",
+                "time with time zone",
+                "time",
+            ].includes(normalized)) {
+                return "date";
+            }
+            return "text";
+        };
 
         let headers = [];
         // transactionStarted is now defined in outer scope
@@ -272,6 +306,7 @@ export async function POST(request) {
             totalRows++;
 
             const rowValues = [];
+            const rowParseErrors = {};
             for (let i = 0; i < headers.length; i++) {
                 const cell = row.getCell(i + 1);
                 let val = cell.value;
@@ -279,11 +314,24 @@ export async function POST(request) {
                     if (val.text) val = val.text;
                     else if (val.result) val = val.result;
                 }
-                // Sanitize: Postgres rejects empty strings for non-text types. Convert "" to null.
-                if (typeof val === 'string' && val.trim() === '') {
-                    val = null;
+                const columnName = headers[i];
+                const dataType = columnTypeByName.get(columnName);
+                const targetType = normalizeDataType(dataType);
+                const { parsedValue, error } = parseValue(val, targetType);
+                rowValues.push(parsedValue);
+                if (error) {
+                    rowParseErrors[columnName] = error;
                 }
-                rowValues.push(val);
+            }
+
+            if (Object.keys(rowParseErrors).length > 0) {
+                errorRows++;
+                errors.push({
+                    rowNumber: row.number,
+                    error: "Column parsing failed.",
+                    columnErrors: rowParseErrors,
+                });
+                continue;
             }
 
             batchData.push({ rowNumber: row.number, values: rowValues });
@@ -297,6 +345,22 @@ export async function POST(request) {
 
         if (transactionStarted) {
             await client.query("COMMIT");
+        }
+
+        if (errors.length > 0) {
+            return Response.json(
+                {
+                    error: "Failed to process import",
+                    details: "One or more rows failed validation.",
+                    errors,
+                    summary: {
+                        totalRows,
+                        okRows,
+                        errorRows,
+                    },
+                },
+                { status: 422 }
+            );
         }
 
         return Response.json({
