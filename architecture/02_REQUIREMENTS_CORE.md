@@ -6,6 +6,7 @@ Allow imports into arbitrary PostgreSQL tables.
 - Server validates headers against table columns.
 - Performs INSERTs directly using `INSERT INTO table ...` syntax.
 - Supports Excel files with header rows.
+- Normalizes cell values based on column data types (number, date/time, boolean, text) and reports per-row, per-column parse errors.
 
 ## B) Custom Query (Core)
 UI to execute raw SQL queries.
