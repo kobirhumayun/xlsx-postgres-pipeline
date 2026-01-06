@@ -26,6 +26,57 @@ export async function POST(request) {
         pool = getDbPool(databaseName);
         client = await pool.connect();
 
+        let cursor;
+        let cleanupPromise;
+        let closeCursorPromise;
+
+        const closeCursor = async () => {
+            if (!cursor) return;
+            if (closeCursorPromise) return closeCursorPromise;
+            closeCursorPromise = new Promise((resolve, reject) => {
+                cursor.close((err) => {
+                    if (err) {
+                        reject(err);
+                        return;
+                    }
+                    resolve();
+                });
+            }).finally(() => {
+                cursor = null;
+            });
+            return closeCursorPromise;
+        };
+
+        const cleanup = async () => {
+            if (cleanupPromise) return cleanupPromise;
+            cleanupPromise = (async () => {
+                try {
+                    await closeCursor();
+                } catch (closeError) {
+                    console.error("Cursor close error", closeError);
+                }
+
+                if (client) {
+                    client.release();
+                }
+                if (pool && pool !== getDbPool()) {
+                    pool.end().catch(console.error);
+                }
+            })();
+
+            return cleanupPromise;
+        };
+
+        if (request.signal) {
+            if (request.signal.aborted) {
+                cleanup().catch(console.error);
+            } else {
+                request.signal.addEventListener("abort", () => {
+                    cleanup().catch(console.error);
+                }, { once: true });
+            }
+        }
+
         const stream = new ReadableStream({
             async start(controller) {
                 // Adapter to pipe ExcelJS writes to the Web ReadableStream controller
@@ -45,19 +96,6 @@ export async function POST(request) {
 
                 const worksheet = workbookWriter.addWorksheet("Export");
 
-                let cursor;
-                const closeCursor = async () => {
-                    if (!cursor) return;
-                    await new Promise((resolve, reject) => {
-                        cursor.close((err) => {
-                            if (err) {
-                                reject(err);
-                                return;
-                            }
-                            resolve();
-                        });
-                    });
-                };
                 try {
                     cursor = client.query(new Cursor(query));
 
@@ -100,20 +138,12 @@ export async function POST(request) {
                     console.error("Stream generation error", err);
                     controller.error(err);
                 } finally {
-                    try {
-                        await closeCursor();
-                    } catch (closeError) {
-                        console.error("Cursor close error", closeError);
-                    }
-                    // Release DB resources when stream is done or errors
-                    if (client) client.release();
-                    if (pool && pool !== getDbPool()) {
-                        // We can't await here easily inside start() without holding up the close?
-                        // But safe to trigger and forget or await.
-                        pool.end().catch(console.error);
-                    }
+                    await cleanup();
                 }
-            }
+            },
+            cancel() {
+                cleanup().catch(console.error);
+            },
         });
 
         return new Response(stream, {
