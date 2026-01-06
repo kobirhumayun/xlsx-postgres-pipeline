@@ -99,6 +99,8 @@ export async function POST(request) {
         SELECT column_name as name,
                data_type,
                is_nullable,
+               column_default,
+               is_identity,
                ordinal_position
         FROM information_schema.columns
         WHERE table_schema = $1
@@ -228,17 +230,25 @@ export async function POST(request) {
                     throw new Error("Header row is empty or invalid.");
                 }
 
-                const expectedHeaders = tableColumns.map(column => column.name);
+                const allColumns = tableColumns.map(column => column.name);
+                const requiredColumns = tableColumns
+                    .filter(
+                        (column) => column.is_nullable === "NO"
+                            && column.column_default === null
+                            && column.is_identity !== "YES"
+                    )
+                    .map((column) => column.name);
                 const headerSet = new Set(headers);
-                const expectedSet = new Set(expectedHeaders);
-                const missingColumns = expectedHeaders.filter(name => !headerSet.has(name));
-                const extraHeaders = headers.filter(name => !expectedSet.has(name));
+                const allColumnsSet = new Set(allColumns);
+                const missingColumns = requiredColumns.filter(name => !headerSet.has(name));
+                const extraHeaders = headers.filter(name => !allColumnsSet.has(name));
 
                 if (missingColumns.length || extraHeaders.length) {
                     const mismatchDetails = {
                         missingColumns,
                         extraHeaders,
-                        expectedColumns: expectedHeaders,
+                        requiredColumns,
+                        tableColumns: allColumns,
                         providedHeaders: headers,
                     };
                     console.warn("Import Header Mismatch:", JSON.stringify(mismatchDetails, null, 2));
