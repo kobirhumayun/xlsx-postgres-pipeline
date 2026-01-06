@@ -99,6 +99,7 @@ export async function POST(request) {
         SELECT column_name as name,
                data_type,
                is_nullable,
+               column_default,
                ordinal_position
         FROM information_schema.columns
         WHERE table_schema = $1
@@ -230,9 +231,21 @@ export async function POST(request) {
 
                 const expectedHeaders = tableColumns.map(column => column.name);
                 const headerSet = new Set(headers);
-                const expectedSet = new Set(expectedHeaders);
-                const missingColumns = expectedHeaders.filter(name => !headerSet.has(name));
-                const extraHeaders = headers.filter(name => !expectedSet.has(name));
+
+                // Allow missing columns if they have a default value or are nullable
+                const missingColumns = tableColumns.filter(column => {
+                    const isMissing = !headerSet.has(column.name);
+                    const isRequired = column.is_nullable === 'NO' && column.column_default === null;
+                    return isMissing && isRequired;
+                }).map(c => c.name);
+
+                // We don't care about extra headers usually, unless strict mode? 
+                // Currently user just said missing ID was the issue.
+                // Let's keep reporting extra headers as warning but maybe not block?
+                // The original code blocked on extra headers too.
+                // "Flexible" might mean "ignore extras". But risk of user typo.
+                // Let's keep blocking on extra headers for safety, but fix the missing ID.
+                const extraHeaders = headers.filter(name => !tableColumns.some(c => c.name === name));
 
                 if (missingColumns.length || extraHeaders.length) {
                     const mismatchDetails = {

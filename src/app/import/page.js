@@ -163,7 +163,16 @@ export default function ImportPage() {
     const tableSet = new Set(tableColumnNames);
     const headerSet = new Set(fileHeaders);
 
-    const missingColumns = tableColumnNames.filter(name => !headerSet.has(name));
+    const missingColumns = tableColumns.filter(column => {
+      const isMissing = !headerSet.has(column.name);
+      // It's strictly missing if:
+      // 1. Not in header
+      // 2. AND is NOT nullable
+      // 3. AND has NO default value
+      // (If it has a default, Postgres fills it. If it is nullable, NULL fills it.)
+      const isRequired = column.is_nullable === 'NO' && column.column_default === null;
+      return isMissing && isRequired;
+    }).map(c => c.name);
     const extraHeaders = fileHeaders.filter(name => !tableSet.has(name));
 
     return { missingColumns, extraHeaders };
