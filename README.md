@@ -135,4 +135,28 @@ Adjust `docker-compose.yml` environment variables:
 - `BACKUP_SCHEDULE`: Cron expression (e.g. `0 2 * * *` for 2AM).
 - `RETENTION_DAYS`: Days to keep old files.
 
+### Backup UI & API Integration
+The app exposes a backup status page at `/backup` backed by API routes:
+- `GET /api/backup/run`: Returns backup status and last backup time.
+- `POST /api/backup/run`: Triggers a backup.
+- `POST /api/backup/restore`: Triggers a restore.
+
+The API can either call a dedicated backup service or execute scripts in the app container. Configure one of the following:
+
+**Backup service mode (recommended in production)**
+- `BACKUP_SERVICE_URL`: Base URL for the backup service (e.g. `http://backup-service:8080`).
+- `BACKUP_SERVICE_STATUS_PATH`: Status endpoint path (default `/status`).
+- `BACKUP_SERVICE_RUN_PATH`: Backup trigger path (default `/run`).
+- `BACKUP_SERVICE_RESTORE_PATH`: Restore trigger path (default `/restore`).
+- `BACKUP_SERVICE_TOKEN`: Optional bearer token sent as `Authorization: Bearer <token>`.
+
+**Local script mode (development/testing)**
+- `BACKUP_SCRIPT_PATH`: Backup script path (default `/usr/local/bin/backup.sh`).
+- `BACKUP_RESTORE_SCRIPT_PATH`: Restore script path (default `/usr/local/bin/restore.sh`).
+- `BACKUP_STORAGE_PATH`: Location of backup files for status lookups (default `/backups`).
+
+**Error handling**
+- If the backup service responds with a non-2xx status, the API returns that status with the service error payload.
+- If no backup file is available for restore, the API returns `404`.
+- Script execution failures return `500` with the underlying error message.
 
