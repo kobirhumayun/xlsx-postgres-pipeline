@@ -194,11 +194,11 @@ export default function ImportPage() {
 
       const res = await fetchJson("/api/structure", {
         method: "POST",
-        body: {
+        body: JSON.stringify({
           databaseName: flexibleFormState.databaseName,
           tableName: newTableName,
           columns: previewColumns
-        }
+        })
       });
 
       // Refresh table list
@@ -331,8 +331,8 @@ export default function ImportPage() {
                 setNewTableName("");
               }}
               className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${creationMode
-                  ? "bg-zinc-900 text-white"
-                  : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                ? "bg-zinc-900 text-white"
+                : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
                 }`}
             >
               {creationMode ? "Cancel Creation" : "+ Create New Table"}
