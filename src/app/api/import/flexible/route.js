@@ -109,6 +109,7 @@ export async function POST(request) {
             [tableSchema, tableBaseName]
         );
 
+
         const tableColumns = columnResult.rows ?? [];
         if (!tableColumns.length) {
             return Response.json(
@@ -116,6 +117,13 @@ export async function POST(request) {
                 { status: 400 }
             );
         }
+
+        // Map column name to data type for quick lookup
+        const columnTypeMap = new Map();
+        tableColumns.forEach(col => {
+            columnTypeMap.set(col.name, col.data_type.toLowerCase());
+        });
+
 
         let headers = [];
         // transactionStarted is now defined in outer scope
@@ -276,15 +284,45 @@ export async function POST(request) {
 
             const rowValues = [];
             for (let i = 0; i < headers.length; i++) {
+                const headerName = headers[i];
                 const cell = row.getCell(i + 1);
                 let val = cell.value;
-                if (val && typeof val === 'object') {
+                const targetType = columnTypeMap.get(headerName) || 'text';
+
+                // Specific Date Handling
+                const isDateType = ['date', 'timestamp', 'timestamptz', 'timestamp without time zone', 'timestamp with time zone'].some(t => targetType.includes(t));
+
+                if (isDateType) {
+                    if (typeof val === 'number') {
+                        val = excelDateToISO(val);
+                    } else if (val instanceof Date) {
+                        val = val.toISOString();
+                    } else if (typeof val === 'string' && val.trim() !== '') {
+                        // Attempt to parse string date
+                        const d = new Date(val);
+                        if (!isNaN(d.getTime())) {
+                            val = d.toISOString();
+                        }
+                    }
+                }
+
+                if (val && typeof val === 'object' && !(val instanceof Date)) { // Date already handled or became string
                     if (val.text) val = val.text;
                     else if (val.result) val = val.result;
+                    // Handle other objects if needed, or fall through
                 }
+
                 // Sanitize: Postgres rejects empty strings for non-text types. Convert "" to null.
-                if (typeof val === 'string' && val.trim() === '') {
-                    val = null;
+                if (typeof val === 'string') {
+                    const trimmed = val.trim();
+                    if (trimmed === '') {
+                        val = null;
+                    } else {
+                        // Update val to trimmed version if it's text, 
+                        // but if we just converted a date to ISO string it's already trimmed/valid.
+                        // Ideally we trim everything unless it's JSON intentionally.
+                        val = trimmed;
+                    }
                 }
                 rowValues.push(val);
             }
