@@ -27,6 +27,7 @@ const statusTone = {
   idle: "text-zinc-500",
   loading: "text-zinc-600",
   success: "text-emerald-600",
+  warning: "text-amber-600",
   error: "text-red-600",
 };
 
@@ -37,11 +38,17 @@ export default function BackupPage() {
   const [progress, setProgress] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [confirmationText, setConfirmationText] = useState("");
 
   const selectedBackup = useMemo(
     () => backups.find((backup) => backup.id === selectedBackupId),
     [backups, selectedBackupId]
   );
+  const isConfirmationValid = useMemo(() => {
+    if (!selectedBackupId) return false;
+    const normalized = confirmationText.trim();
+    return normalized === "RESTORE" || normalized === selectedBackupId;
+  }, [confirmationText, selectedBackupId]);
 
   const simulateDelay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -84,15 +91,53 @@ export default function BackupPage() {
       return;
     }
 
+    if (!isConfirmationValid) {
+      setStatus({
+        type: "warning",
+        message: "Enter the backup filename or type RESTORE to confirm.",
+      });
+      setProgress("");
+      return;
+    }
+
     setIsRestoring(true);
     setStatus({ type: "loading", message: "Restore in progress..." });
     setProgress("Validating archive and applying changes.");
 
-    await simulateDelay(1400);
+    try {
+      const response = await fetch("/api/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: selectedBackupId,
+          confirmationToken: confirmationText.trim(),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.success === false) {
+        setStatus({
+          type: payload?.warning ? "warning" : "error",
+          message: payload?.warning || payload?.message || payload?.error || "Restore failed.",
+        });
+        setProgress(payload?.details || "");
+        return;
+      }
 
-    setStatus({ type: "success", message: "Restore completed. Systems are back online." });
-    setProgress(`Restored from ${selectedBackup?.label ?? "selected backup"}.`);
-    setIsRestoring(false);
+      await simulateDelay(1400);
+
+      setStatus({
+        type: "success",
+        message: payload?.message || "Restore completed. Systems are back online.",
+      });
+      setProgress(
+        payload?.details || `Restored from ${selectedBackup?.label ?? "selected backup"}.`
+      );
+    } catch (error) {
+      setStatus({ type: "error", message: "Restore request failed. Try again." });
+      setProgress("");
+    } finally {
+      setIsRestoring(false);
+    }
   };
 
   return (
@@ -140,11 +185,26 @@ export default function BackupPage() {
               <button
                 type="button"
                 onClick={handleRestore}
-                disabled={isRestoring}
+                disabled={isRestoring || !isConfirmationValid}
                 className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-semibold text-zinc-800 transition hover:border-zinc-400 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isRestoring ? "Restoring..." : "Restore Selected Backup"}
               </button>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+              <p className="font-semibold text-zinc-900">Confirmation required</p>
+              <p className="mt-1 text-xs text-zinc-600">
+                Type the backup filename or enter <span className="font-semibold">RESTORE</span> to
+                enable the restore button.
+              </p>
+              <input
+                type="text"
+                value={confirmationText}
+                onChange={(event) => setConfirmationText(event.target.value)}
+                placeholder={selectedBackupId ? `Type ${selectedBackupId} or RESTORE` : "Select a backup first"}
+                className="mt-3 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus:border-zinc-500 focus:outline-none"
+              />
             </div>
 
             <div className="mt-5 grid gap-3">
@@ -161,7 +221,10 @@ export default function BackupPage() {
                     name="backup"
                     value={backup.id}
                     checked={selectedBackupId === backup.id}
-                    onChange={() => setSelectedBackupId(backup.id)}
+                    onChange={() => {
+                      setSelectedBackupId(backup.id);
+                      setConfirmationText("");
+                    }}
                     className="mt-1"
                   />
                   <div className="flex flex-1 flex-col gap-1">
