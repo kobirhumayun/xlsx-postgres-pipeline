@@ -46,9 +46,9 @@ export async function POST(request) {
 
                 const worksheet = workbookWriter.addWorksheet("Export");
 
-                let cursor;
+                let cursorObj;
                 try {
-                    const cursorObj = client.query(new Cursor(query));
+                    cursorObj = client.query(new Cursor(query));
 
                     let isFirstBatch = true;
                     // Read in batches of 1000
@@ -89,6 +89,14 @@ export async function POST(request) {
                     console.error("Stream generation error", err);
                     controller.error(err);
                 } finally {
+                    if (cursorObj) {
+                        await new Promise((resolve) => {
+                            cursorObj.close((err) => {
+                                if (err) console.error("Cursor close error", err);
+                                resolve();
+                            });
+                        });
+                    }
                     // Release DB resources when stream is done or errors
                     if (client) client.release();
                     if (pool && pool !== getDbPool()) {
