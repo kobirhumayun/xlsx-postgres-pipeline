@@ -127,7 +127,9 @@ export async function runBackupScript() {
 
   const backupDir = getBackupDir();
 
-  const { stdout, stderr } = await execFileAsync(scriptPath, [], {
+  // Use bash explicitly to support running .sh files on Windows (provided bash is in PATH)
+  // and to ensure consistency.
+  const { stdout, stderr } = await execFileAsync("bash", [scriptPath], {
     timeout: 10 * 60 * 1000,
     maxBuffer: 1024 * 1024,
     env: {
@@ -148,7 +150,7 @@ export async function runRestoreScript(backupPath) {
 
   const backupDir = getBackupDir();
 
-  const { stdout, stderr } = await execFileAsync(scriptPath, [backupPath], {
+  const { stdout, stderr } = await execFileAsync("bash", [scriptPath, backupPath], {
     timeout: 10 * 60 * 1000,
     maxBuffer: 1024 * 1024,
     env: {
