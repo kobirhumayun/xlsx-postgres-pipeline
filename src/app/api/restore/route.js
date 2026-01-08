@@ -79,7 +79,9 @@ export async function POST(request) {
       {
         success: false,
         error: "Failed to restore backup.",
-        message: "Restore failed. Review server logs for details.",
+        message: "Restore failed. check logs.",
+        details: error.message,
+        debug: error.stderr || error.stdout,
       },
       { status: 500 }
     );

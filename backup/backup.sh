@@ -3,7 +3,7 @@ set -e
 set -o pipefail
 
 # Configuration
-BACKUP_DIR="/backups"
+BACKUP_DIR="${BACKUP_DIR:-/backups}"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 BACKUP_FILE="$BACKUP_DIR/backup_$TIMESTAMP.sql.gz"
 RETENTION_DAYS=${RETENTION_DAYS:-7}

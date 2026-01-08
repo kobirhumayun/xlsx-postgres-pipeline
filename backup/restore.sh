@@ -7,7 +7,8 @@ BACKUP_FILE="$1"
 if [ -z "$BACKUP_FILE" ]; then
     echo "Usage: restore.sh <backup_file_path>"
     echo "Available backups:"
-    ls -lh /backups/*.sql.gz 2>/dev/null || echo "No backups found."
+    BACKUP_DIR="${BACKUP_DIR:-/backups}"
+    ls -lh "$BACKUP_DIR"/*.sql.gz 2>/dev/null || echo "No backups found."
     exit 1
 fi
 

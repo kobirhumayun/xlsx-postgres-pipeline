@@ -20,7 +20,10 @@ export async function GET() {
   } catch (error) {
     console.error("Failed to list backups:", error);
     return NextResponse.json(
-      { error: "Failed to list backups." },
+      {
+        error: "Failed to list backups.",
+        details: error.message,
+      },
       { status: 500 }
     );
   }
@@ -44,7 +47,11 @@ export async function POST() {
   } catch (error) {
     console.error("Failed to run backup:", error);
     return NextResponse.json(
-      { error: "Failed to run backup." },
+      {
+        error: "Failed to run backup.",
+        details: error.message,
+        debug: error.stderr || error.stdout,
+      },
       { status: 500 }
     );
   }
