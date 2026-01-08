@@ -4,7 +4,7 @@ import { z } from "zod";
 export const dynamic = 'force-dynamic';
 
 const columnSchema = z.object({
-    name: z.string().regex(/^[a-zA-Z0-9_]+$/, "Invalid column name"),
+    name: z.string().regex(/^[a-zA-Z0-9_]+$/, "Invalid column name").max(63),
     type: z.enum([
         "TEXT", "NUMERIC", "INTEGER", "BOOLEAN", "DATE", "TIMESTAMP", "JSONB"
     ]),
