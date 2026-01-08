@@ -28,6 +28,12 @@ export default function Home() {
                 "Execute raw SQL queries against multiple tables and export results.",
               href: "/query",
             },
+            {
+              title: "Backup",
+              description:
+                "Create backups and restore to a selected point in time.",
+              href: "/backup",
+            },
           ].map((card) => (
             <a
               key={card.title}
