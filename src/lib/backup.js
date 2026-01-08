@@ -124,9 +124,16 @@ export async function runBackupScript() {
       "Backup script not found. Configure BACKUP_SCRIPT_PATH or install /usr/local/bin/backup.sh."
     );
   }
+
+  const backupDir = getBackupDir();
+
   const { stdout, stderr } = await execFileAsync(scriptPath, [], {
     timeout: 10 * 60 * 1000,
     maxBuffer: 1024 * 1024,
+    env: {
+      ...process.env,
+      BACKUP_DIR: backupDir,
+    },
   });
   return { stdout, stderr };
 }
@@ -138,9 +145,16 @@ export async function runRestoreScript(backupPath) {
       "Restore script not found. Configure RESTORE_SCRIPT_PATH or install /usr/local/bin/restore.sh."
     );
   }
+
+  const backupDir = getBackupDir();
+
   const { stdout, stderr } = await execFileAsync(scriptPath, [backupPath], {
     timeout: 10 * 60 * 1000,
     maxBuffer: 1024 * 1024,
+    env: {
+      ...process.env,
+      BACKUP_DIR: backupDir,
+    },
   });
   return { stdout, stderr };
 }
