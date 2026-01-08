@@ -1,27 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
-
-const initialBackups = [
-  {
-    id: "backup-2024-06-01",
-    label: "June 1, 2024 • 02:15 UTC",
-    size: "2.4 GB",
-    source: "Nightly schedule",
-  },
-  {
-    id: "backup-2024-05-28",
-    label: "May 28, 2024 • 22:48 UTC",
-    size: "2.3 GB",
-    source: "Manual run",
-  },
-  {
-    id: "backup-2024-05-20",
-    label: "May 20, 2024 • 02:12 UTC",
-    size: "2.2 GB",
-    source: "Nightly schedule",
-  },
-];
+import { useCallback, useMemo, useState, useEffect } from "react";
 
 const statusTone = {
   idle: "text-zinc-500",
@@ -31,13 +10,75 @@ const statusTone = {
   error: "text-red-600",
 };
 
+const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZoneName: "short",
+});
+
+const formatBytes = (bytes) => {
+  if (typeof bytes !== "number" || Number.isNaN(bytes)) {
+    return null;
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const units = ["KB", "MB", "GB", "TB"];
+  let unitIndex = -1;
+  let value = bytes;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`;
+};
+
+const normalizeBackup = (backup) => {
+  if (!backup) return null;
+  const filename = backup.name || backup.filename || backup.id;
+  if (!filename) return null;
+  const modifiedAt = backup.modifiedAt || backup.timestamp || backup.createdAt;
+  let label = filename;
+  if (modifiedAt) {
+    const parsed = new Date(modifiedAt);
+    if (!Number.isNaN(parsed.valueOf())) {
+      label = dateFormatter.format(parsed);
+    }
+  }
+  const sizeLabel =
+    typeof backup.size === "number" ? formatBytes(backup.size) : backup.size || null;
+  return {
+    id: filename,
+    filename,
+    label,
+    sizeLabel,
+    source: backup.source || "Backup storage",
+  };
+};
+
+const buildBackupSummary = (backup) => {
+  const parts = [backup.filename];
+  if (backup.sizeLabel) {
+    parts.push(backup.sizeLabel);
+  }
+  if (backup.source) {
+    parts.push(backup.source);
+  }
+  return parts.join(" • ");
+};
+
 export default function BackupPage() {
-  const [backups, setBackups] = useState(initialBackups);
-  const [selectedBackupId, setSelectedBackupId] = useState(initialBackups[0]?.id ?? "");
+  const [backups, setBackups] = useState([]);
+  const [selectedBackupId, setSelectedBackupId] = useState("");
+  const [backupDir, setBackupDir] = useState("");
   const [status, setStatus] = useState({ type: "idle", message: "" });
   const [progress, setProgress] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [confirmationText, setConfirmationText] = useState("");
 
   const selectedBackup = useMemo(
@@ -50,7 +91,55 @@ export default function BackupPage() {
     return normalized === "RESTORE" || normalized === selectedBackupId;
   }, [confirmationText, selectedBackupId]);
 
-  const simulateDelay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const applyBackups = useCallback((items) => {
+    setBackups(items);
+    setSelectedBackupId((prev) => {
+      if (items.find((backup) => backup.id === prev)) {
+        return prev;
+      }
+      return items[0]?.id ?? "";
+    });
+  }, []);
+
+  const loadBackups = useCallback(async ({ announce = false } = {}) => {
+    setIsLoading(true);
+    if (announce) {
+      setStatus({ type: "loading", message: "Refreshing backup list..." });
+      setProgress("");
+    }
+    try {
+      const response = await fetch("/api/backup", { method: "GET" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to load backups.");
+      }
+      const backupsPayload = Array.isArray(payload?.backups) ? payload.backups : [];
+      const normalized = backupsPayload
+        .map((backup) => normalizeBackup(backup))
+        .filter(Boolean);
+      setBackupDir(payload?.backupDir || "");
+      applyBackups(normalized);
+      if (announce) {
+        setStatus({
+          type: "success",
+          message: normalized.length ? "Backup list updated." : "No backups found yet.",
+        });
+      } else if (!normalized.length) {
+        setStatus({ type: "idle", message: "No backups found yet." });
+      }
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message: error?.message || "Unable to load backups.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [applyBackups]);
+
+  useEffect(() => {
+    loadBackups({ announce: true });
+  }, [loadBackups]);
 
   const handleRunBackup = async () => {
     if (isRunning) return;
@@ -58,30 +147,35 @@ export default function BackupPage() {
     setStatus({ type: "loading", message: "Backup running..." });
     setProgress("Snapshotting data and uploading archive.");
 
-    await simulateDelay(1200);
-
-    const timestamp = new Date();
-    const label = `${timestamp.toLocaleDateString("en-US", {
-      month: "short",
-      day: "2-digit",
-      year: "numeric",
-    })} • ${timestamp.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZoneName: "short",
-    })}`;
-    const newBackup = {
-      id: `backup-${timestamp.getTime()}`,
-      label,
-      size: "2.5 GB",
-      source: "Manual run",
-    };
-
-    setBackups((prev) => [newBackup, ...prev]);
-    setSelectedBackupId(newBackup.id);
-    setStatus({ type: "success", message: "Backup completed successfully." });
-    setProgress("New backup available for restore.");
-    setIsRunning(false);
+    try {
+      const response = await fetch("/api/backup", { method: "POST" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.success === false) {
+        throw new Error(payload?.error || payload?.message || "Backup failed.");
+      }
+      const backupsPayload = Array.isArray(payload?.backups) ? payload.backups : [];
+      const normalized = backupsPayload
+        .map((backup) => normalizeBackup(backup))
+        .filter(Boolean);
+      if (normalized.length) {
+        applyBackups(normalized);
+      } else {
+        await loadBackups();
+      }
+      setStatus({
+        type: "success",
+        message: payload?.message || "Backup completed successfully.",
+      });
+      setProgress("New backup available for restore.");
+    } catch (error) {
+      setStatus({
+        type: "error",
+        message: error?.message || "Backup request failed. Try again.",
+      });
+      setProgress("");
+    } finally {
+      setIsRunning(false);
+    }
   };
 
   const handleRestore = async () => {
@@ -105,11 +199,12 @@ export default function BackupPage() {
     setProgress("Validating archive and applying changes.");
 
     try {
+      const filename = selectedBackup?.filename || selectedBackupId;
       const response = await fetch("/api/restore", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          filename: selectedBackupId,
+          filename,
           confirmationToken: confirmationText.trim(),
         }),
       });
@@ -122,8 +217,6 @@ export default function BackupPage() {
         setProgress(payload?.details || "");
         return;
       }
-
-      await simulateDelay(1400);
 
       setStatus({
         type: "success",
@@ -181,6 +274,9 @@ export default function BackupPage() {
                 <p className="mt-1 text-sm text-zinc-600">
                   Select a backup to restore your environment.
                 </p>
+                {backupDir && (
+                  <p className="mt-2 text-xs text-zinc-400">Backup directory: {backupDir}</p>
+                )}
               </div>
               <button
                 type="button"
@@ -202,12 +298,24 @@ export default function BackupPage() {
                 type="text"
                 value={confirmationText}
                 onChange={(event) => setConfirmationText(event.target.value)}
-                placeholder={selectedBackupId ? `Type ${selectedBackupId} or RESTORE` : "Select a backup first"}
+                placeholder={
+                  selectedBackupId ? `Type ${selectedBackupId} or RESTORE` : "Select a backup first"
+                }
                 className="mt-3 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus:border-zinc-500 focus:outline-none"
               />
             </div>
 
             <div className="mt-5 grid gap-3">
+              {isLoading && !backups.length && (
+                <div className="rounded-xl border border-dashed border-zinc-200 bg-white px-4 py-6 text-center text-sm text-zinc-500">
+                  Loading backups...
+                </div>
+              )}
+              {!isLoading && !backups.length && (
+                <div className="rounded-xl border border-dashed border-zinc-200 bg-white px-4 py-6 text-center text-sm text-zinc-500">
+                  No backups available yet. Run a manual backup to get started.
+                </div>
+              )}
               {backups.map((backup) => (
                 <label
                   key={backup.id}
@@ -230,7 +338,7 @@ export default function BackupPage() {
                   <div className="flex flex-1 flex-col gap-1">
                     <span className="font-medium text-zinc-900">{backup.label}</span>
                     <span className="text-xs text-zinc-500">
-                      {backup.size} • {backup.source}
+                      {buildBackupSummary(backup)}
                     </span>
                   </div>
                   {selectedBackupId === backup.id && (
