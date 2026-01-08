@@ -32,6 +32,7 @@ COPY --from=builder /app/backup/restore.sh /usr/local/bin/restore.sh
 
 COPY entrypoint.sh ./
 RUN sed -i 's/\r$//' entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/backup.sh /usr/local/bin/restore.sh
 RUN chmod +x entrypoint.sh
 RUN chmod +x /usr/local/bin/backup.sh /usr/local/bin/restore.sh
 
