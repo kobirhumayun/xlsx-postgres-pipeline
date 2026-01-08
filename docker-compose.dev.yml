@@ -8,5 +8,6 @@ services:
     volumes:
       - .:/app
       - /app/node_modules
+      - ./backups:/backups
     depends_on:
       - db
