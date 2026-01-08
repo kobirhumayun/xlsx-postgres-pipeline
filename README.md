@@ -134,5 +134,6 @@ Adjust `docker-compose.yml` environment variables:
 - `DATABASE_URL`: Connection string (defaults to project's .env value).
 - `BACKUP_SCHEDULE`: Cron expression (e.g. `0 2 * * *` for 2AM).
 - `RETENTION_DAYS`: Days to keep old files.
+- `BACKUP_DIR`: Internal path to store backups (default: `/backups`).
 
 
