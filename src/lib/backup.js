@@ -105,10 +105,24 @@ export async function callBackupService(pathname, options = {}) {
   return payload;
 }
 
+function resolveScriptPath(envVar, defaultFilename) {
+  const configured = process.env[envVar]?.trim();
+  if (configured) {
+    return configured;
+  }
+  const preferred = path.join("/usr/local/bin", defaultFilename);
+  if (fs.existsSync(preferred)) {
+    return preferred;
+  }
+  return path.join(process.cwd(), "backup", defaultFilename);
+}
+
 export async function runBackupScript() {
-  const scriptPath = process.env.BACKUP_SCRIPT_PATH || "/usr/local/bin/backup.sh";
+  const scriptPath = resolveScriptPath("BACKUP_SCRIPT_PATH", "backup.sh");
   if (!fs.existsSync(scriptPath)) {
-    throw new Error("Backup script not found on this container.");
+    throw new Error(
+      "Backup script not found. Configure BACKUP_SCRIPT_PATH or install /usr/local/bin/backup.sh."
+    );
   }
   const { stdout, stderr } = await execFileAsync(scriptPath, [], {
     timeout: 10 * 60 * 1000,
@@ -118,9 +132,11 @@ export async function runBackupScript() {
 }
 
 export async function runRestoreScript(backupPath) {
-  const scriptPath = process.env.RESTORE_SCRIPT_PATH || "/usr/local/bin/restore.sh";
+  const scriptPath = resolveScriptPath("RESTORE_SCRIPT_PATH", "restore.sh");
   if (!fs.existsSync(scriptPath)) {
-    throw new Error("Restore script not found on this container.");
+    throw new Error(
+      "Restore script not found. Configure RESTORE_SCRIPT_PATH or install /usr/local/bin/restore.sh."
+    );
   }
   const { stdout, stderr } = await execFileAsync(scriptPath, [backupPath], {
     timeout: 10 * 60 * 1000,

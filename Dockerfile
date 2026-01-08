@@ -1,5 +1,6 @@
 FROM node:20-alpine AS base
 WORKDIR /app
+RUN apk add --no-cache bash postgresql-client
 
 FROM base AS deps
 COPY package.json package-lock.json ./
@@ -26,10 +27,13 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 COPY prisma.config.mjs ./
+COPY --from=builder /app/backup/backup.sh /usr/local/bin/backup.sh
+COPY --from=builder /app/backup/restore.sh /usr/local/bin/restore.sh
 
 COPY entrypoint.sh ./
 RUN sed -i 's/\r$//' entrypoint.sh
 RUN chmod +x entrypoint.sh
+RUN chmod +x /usr/local/bin/backup.sh /usr/local/bin/restore.sh
 
 EXPOSE 3000
 ENTRYPOINT ["./entrypoint.sh"]
