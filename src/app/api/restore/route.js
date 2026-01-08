@@ -19,7 +19,7 @@ export async function POST(request) {
     );
   }
 
-  const filename = body?.filename;
+  const filename = typeof body?.filename === "string" ? body.filename.trim() : "";
   if (!filename) {
     return NextResponse.json(
       { success: false, error: "filename is required.", message: "Provide a backup filename." },
@@ -27,7 +27,8 @@ export async function POST(request) {
     );
   }
 
-  const confirmationToken = body?.confirmationToken;
+  const confirmationToken =
+    typeof body?.confirmationToken === "string" ? body.confirmationToken.trim() : "";
   if (!confirmationToken) {
     return NextResponse.json(
       {
@@ -40,7 +41,37 @@ export async function POST(request) {
   }
 
   try {
-    if (shouldUseBackupService()) {
+    const useBackupService = shouldUseBackupService();
+    let resolved = null;
+    if (!useBackupService) {
+      resolved = await resolveBackupPath(filename);
+      if (!resolved) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Backup file not found or invalid.",
+            message: "Backup file not found or invalid.",
+          },
+          { status: 404 }
+        );
+      }
+    }
+
+    const resolvedFilename = resolved?.filename ?? filename;
+    const isConfirmationValid =
+      confirmationToken === "RESTORE" || confirmationToken === resolvedFilename;
+    if (!isConfirmationValid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid confirmation token.",
+          message: "Enter the backup filename or type RESTORE to confirm.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (useBackupService) {
       const payload = await callBackupService("/restore", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -51,18 +82,6 @@ export async function POST(request) {
         message: payload?.message ?? "Restore request accepted.",
         ...payload,
       });
-    }
-
-    const resolved = await resolveBackupPath(filename);
-    if (!resolved) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Backup file not found or invalid.",
-          message: "Backup file not found or invalid.",
-        },
-        { status: 404 }
-      );
     }
 
     const result = await runRestoreScript(resolved.fullPath);
