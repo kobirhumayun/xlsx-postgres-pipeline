@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getDbPool } from "@/lib/db";
+import { getDbPool, registerNumericParser } from "@/lib/db";
 import ExcelJS from "exceljs";
 import Cursor from "pg-cursor";
 
@@ -23,6 +23,7 @@ export async function POST(request) {
 
         const { query, databaseName } = parsed.data;
 
+        registerNumericParser();
         pool = getDbPool(databaseName);
         client = await pool.connect();
 
