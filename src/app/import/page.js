@@ -126,6 +126,27 @@ export default function ImportPage() {
         }
 
         if (!cancelled) {
+          // Check for duplicates
+          const seen = new Set();
+          const duplicates = new Set();
+          extracted.forEach(h => {
+            if (seen.has(h)) {
+              duplicates.add(h);
+            } else {
+              seen.add(h);
+            }
+          });
+
+          if (duplicates.size > 0) {
+            setFileHeaders([]);
+            setPreviewColumns([]);
+            setFileHeaderStatus({
+              type: "error",
+              message: `Duplicate headers detected: ${Array.from(duplicates).join(", ")}. Please ensure all column headers are unique.`
+            });
+            return;
+          }
+
           setFileHeaders(extracted);
           setFileHeaderStatus({ type: "success", message: "" });
 
@@ -135,6 +156,27 @@ export default function ImportPage() {
             name: h.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_'),
             type: "TEXT"
           }));
+
+          // STRICT CHECK: Check for normalized name collisions
+          // e.g. "Name" and "name" both -> "name". This is fatal for table creation.
+          const normalizedCounts = {};
+          initialColumns.forEach(col => {
+            normalizedCounts[col.name] = (normalizedCounts[col.name] || 0) + 1;
+          });
+
+          const collisionList = Object.entries(normalizedCounts)
+            .filter(([_, count]) => count > 1)
+            .map(([name]) => name);
+
+          if (collisionList.length > 0) {
+            setPreviewColumns([]); // Clear previews to block creation
+            setFileHeaderStatus({
+              type: "error",
+              message: `Column name collisions detected. distinct headers normalize to the same database column: ${collisionList.join(", ")}. Please rename headers in Excel to be distinct (e.g. "Name", "name" -> "name" conflict).`
+            });
+            return;
+          }
+
           setPreviewColumns(initialColumns);
         }
       } catch (error) {
@@ -463,7 +505,12 @@ export default function ImportPage() {
                     </tbody>
                   </table>
                 </div>
-                {previewColumns.length === 0 && <p className="text-zinc-500">No columns detected.</p>}
+                {fileHeaderStatus.message && (
+                  <p className={`mt-3 text-sm ${fileHeaderStatus.type === "error" ? "text-red-600 font-medium" : "text-zinc-500"}`}>
+                    {fileHeaderStatus.message}
+                  </p>
+                )}
+                {previewColumns.length === 0 && !fileHeaderStatus.message && <p className="text-zinc-500">No columns detected.</p>}
               </div>
             )}
 
@@ -579,7 +626,7 @@ export default function ImportPage() {
               <button
                 className="rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
                 type="submit"
-                disabled={loading}
+                disabled={loading || fileHeaderStatus.type === "error"}
               >
                 {loading ? (creationMode ? "Creating & Importing..." : "Importing...") : (creationMode ? "Create & Import" : "Start import")}
               </button>
