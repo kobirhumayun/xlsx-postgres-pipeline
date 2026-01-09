@@ -12,6 +12,17 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -148,8 +159,7 @@ export default function QueryPage() {
     };
 
     const handleDeleteQuery = async (id, e) => {
-        e.stopPropagation();
-        if (!confirm("Are you sure you want to delete this saved query?")) return;
+        if (e) e.stopPropagation(); // Stop propagation if event exists
         try {
             await fetch("/api/saved-queries?id=" + id, { method: "DELETE" });
             loadSavedQueries();
@@ -240,13 +250,34 @@ export default function QueryPage() {
                                                     <p className="text-sm font-medium text-zinc-900 truncate" title={sq.name}>{sq.name}</p>
                                                     {sq.description && <p className="text-xs text-zinc-500 truncate" title={sq.description}>{sq.description}</p>}
                                                 </div>
-                                                <button
-                                                    onClick={(e) => handleDeleteQuery(sq.id, e)}
-                                                    className="opacity-0 group-hover:opacity-100 p-1 text-zinc-400 hover:text-red-600 transition-opacity"
-                                                    title="Delete"
-                                                >
-                                                    <Trash2 className="w-3 h-3" />
-                                                </button>
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                        <button
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            className="opacity-0 group-hover:opacity-100 p-1 text-zinc-400 hover:text-red-600 transition-opacity"
+                                                            title="Delete"
+                                                        >
+                                                            <Trash2 className="w-3 h-3" />
+                                                        </button>
+                                                    </AlertDialogTrigger>
+                                                    <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle>Delete Saved Query?</AlertDialogTitle>
+                                                            <AlertDialogDescription>
+                                                                Are you sure you want to delete <strong>{sq.name}</strong>? This action cannot be undone.
+                                                            </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+                                                        <AlertDialogFooter>
+                                                            <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
+                                                            <AlertDialogAction
+                                                                onClick={(e) => handleDeleteQuery(sq.id, e)}
+                                                                className="bg-red-600 hover:bg-red-700 text-white hover:text-white"
+                                                            >
+                                                                Delete
+                                                            </AlertDialogAction>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
                                             </li>
                                         ))}
                                     </ul>
