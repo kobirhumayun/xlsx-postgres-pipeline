@@ -123,6 +123,7 @@ export async function POST(request) {
 
         pool = getDbPool(databaseName);
         client = await pool.connect();
+        await client.query('BEGIN');
 
         // 1. Check if table exists
         // We assume 'public' schema for simplicity in creation unless specified in name.
@@ -138,6 +139,7 @@ export async function POST(request) {
         `, [tableName]);
 
         if (checkExists.rows[0].exists) {
+            await client.query('ROLLBACK');
             return Response.json({ error: "Table already exists." }, { status: 409 });
         }
 
@@ -165,6 +167,8 @@ export async function POST(request) {
             }
         }
 
+        await client.query('COMMIT');
+
         return Response.json({
             success: true,
             message: `Table ${tableName} created successfully.`,
@@ -172,6 +176,9 @@ export async function POST(request) {
         });
 
     } catch (error) {
+        if (client) {
+            try { await client.query('ROLLBACK'); } catch (e) { console.error('Rollback error', e); }
+        }
         console.error("Create Table Error", error);
         return Response.json(
             { error: "Failed to create table", details: error.message },
