@@ -8,7 +8,8 @@ const columnSchema = z.object({
     type: z.enum([
         "TEXT", "NUMERIC", "INTEGER", "BOOLEAN", "DATE", "TIMESTAMP", "JSONB"
     ]),
-    primaryKey: z.boolean().optional()
+    primaryKey: z.boolean().optional(),
+    isIndexed: z.boolean().optional()
 });
 
 const createTableSchema = z.object({
@@ -122,6 +123,7 @@ export async function POST(request) {
 
         pool = getDbPool(databaseName);
         client = await pool.connect();
+        await client.query('BEGIN');
 
         // 1. Check if table exists
         // We assume 'public' schema for simplicity in creation unless specified in name.
@@ -137,6 +139,7 @@ export async function POST(request) {
         `, [tableName]);
 
         if (checkExists.rows[0].exists) {
+            await client.query('ROLLBACK');
             return Response.json({ error: "Table already exists." }, { status: 409 });
         }
 
@@ -152,7 +155,19 @@ export async function POST(request) {
         const query = `CREATE TABLE ${safeTableName} (${columnDefs.join(", ")})`;
 
         // 3. Execute
+        // 3. Execute Create Table
         await client.query(query);
+
+        // 4. Create Indexes
+        for (const col of columns) {
+            if (col.isIndexed) {
+                const indexName = `idx_${tableName}_${col.name}`;
+                // Using standard B-Tree index (default)
+                await client.query(`CREATE INDEX "${indexName}" ON ${safeTableName} ("${col.name}")`);
+            }
+        }
+
+        await client.query('COMMIT');
 
         return Response.json({
             success: true,
@@ -161,6 +176,9 @@ export async function POST(request) {
         });
 
     } catch (error) {
+        if (client) {
+            try { await client.query('ROLLBACK'); } catch (e) { console.error('Rollback error', e); }
+        }
         console.error("Create Table Error", error);
         return Response.json(
             { error: "Failed to create table", details: error.message },
