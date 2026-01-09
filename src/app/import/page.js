@@ -154,7 +154,8 @@ export default function ImportPage() {
           // Simple sanitization for column names: lowercase, replace spaces with _, remove special chars
           const initialColumns = extracted.map(h => ({
             name: h.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_'),
-            type: "TEXT"
+            type: "TEXT",
+            isIndexed: false
           }));
 
           // STRICT CHECK: Check for normalized name collisions
@@ -475,7 +476,8 @@ export default function ImportPage() {
                       <tr>
                         <th className="py-2 pr-4">Excel Header</th>
                         <th className="py-2 pr-4">Column Name (SQL)</th>
-                        <th className="py-2">Data Type</th>
+                        <th className="py-2 pr-4">Data Type</th>
+                        <th className="py-2">Index?</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -499,6 +501,14 @@ export default function ImportPage() {
                             >
                               {POSTGRES_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
+                          </td>
+                          <td className="py-2 pl-2">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-900"
+                              checked={col.isIndexed || false}
+                              onChange={(e) => handlePreviewColumnChange(idx, 'isIndexed', e.target.checked)}
+                            />
                           </td>
                         </tr>
                       ))}

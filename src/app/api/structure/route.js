@@ -8,7 +8,8 @@ const columnSchema = z.object({
     type: z.enum([
         "TEXT", "NUMERIC", "INTEGER", "BOOLEAN", "DATE", "TIMESTAMP", "JSONB"
     ]),
-    primaryKey: z.boolean().optional()
+    primaryKey: z.boolean().optional(),
+    isIndexed: z.boolean().optional()
 });
 
 const createTableSchema = z.object({
@@ -152,7 +153,17 @@ export async function POST(request) {
         const query = `CREATE TABLE ${safeTableName} (${columnDefs.join(", ")})`;
 
         // 3. Execute
+        // 3. Execute Create Table
         await client.query(query);
+
+        // 4. Create Indexes
+        for (const col of columns) {
+            if (col.isIndexed) {
+                const indexName = `idx_${tableName}_${col.name}`;
+                // Using standard B-Tree index (default)
+                await client.query(`CREATE INDEX "${indexName}" ON ${safeTableName} ("${col.name}")`);
+            }
+        }
 
         return Response.json({
             success: true,
