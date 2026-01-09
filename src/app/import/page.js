@@ -126,6 +126,27 @@ export default function ImportPage() {
         }
 
         if (!cancelled) {
+          // Check for duplicates
+          const seen = new Set();
+          const duplicates = new Set();
+          extracted.forEach(h => {
+            if (seen.has(h)) {
+              duplicates.add(h);
+            } else {
+              seen.add(h);
+            }
+          });
+
+          if (duplicates.size > 0) {
+            setFileHeaders([]);
+            setPreviewColumns([]);
+            setFileHeaderStatus({
+              type: "error",
+              message: `Duplicate headers detected: ${Array.from(duplicates).join(", ")}. Please ensure all column headers are unique.`
+            });
+            return;
+          }
+
           setFileHeaders(extracted);
           setFileHeaderStatus({ type: "success", message: "" });
 
@@ -579,7 +600,7 @@ export default function ImportPage() {
               <button
                 className="rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
                 type="submit"
-                disabled={loading}
+                disabled={loading || fileHeaderStatus.type === "error"}
               >
                 {loading ? (creationMode ? "Creating & Importing..." : "Importing...") : (creationMode ? "Create & Import" : "Start import")}
               </button>
