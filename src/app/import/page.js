@@ -27,6 +27,7 @@ export default function ImportPage() {
   const [tableColumnsStatus, setTableColumnsStatus] = useState({ type: "idle", message: "" });
   const [fileHeaders, setFileHeaders] = useState([]);
   const [fileHeaderStatus, setFileHeaderStatus] = useState({ type: "idle", message: "" });
+  const [duplicateHeaders, setDuplicateHeaders] = useState([]);
 
   // Creation Mode State
   const [creationMode, setCreationMode] = useState(false);
@@ -84,11 +85,14 @@ export default function ImportPage() {
     if (!file) {
       setFileHeaders([]);
       setFileHeaderStatus({ type: "idle", message: "" });
+      setDuplicateHeaders([]);
       setPreviewColumns([]);
       return;
     }
 
     let cancelled = false;
+
+    const normalizeHeader = (header) => header.toLowerCase().trim();
 
     const extractHeaders = async () => {
       try {
@@ -126,22 +130,42 @@ export default function ImportPage() {
         }
 
         if (!cancelled) {
-          setFileHeaders(extracted);
-          setFileHeaderStatus({ type: "success", message: "" });
+          const headerCounts = new Map();
+          extracted.forEach(header => {
+            const key = normalizeHeader(header);
+            headerCounts.set(key, (headerCounts.get(key) ?? 0) + 1);
+          });
+          const duplicateKeys = [...headerCounts.entries()]
+            .filter(([, count]) => count > 1)
+            .map(([key]) => key);
 
-          // Auto-populate preview columns for creation mode
-          // Simple sanitization for column names: lowercase, replace spaces with _, remove special chars
-          const initialColumns = extracted.map(h => ({
-            name: h.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_'),
-            type: "TEXT"
-          }));
-          setPreviewColumns(initialColumns);
+          setFileHeaders(extracted);
+          setDuplicateHeaders(duplicateKeys);
+
+          if (duplicateKeys.length) {
+            setFileHeaderStatus({
+              type: "error",
+              message: `Duplicate headers found: ${duplicateKeys.join(", ")}`
+            });
+            setPreviewColumns([]);
+          } else {
+            setFileHeaderStatus({ type: "success", message: "" });
+
+            // Auto-populate preview columns for creation mode
+            // Simple sanitization for column names: lowercase, replace spaces with _, remove special chars
+            const initialColumns = extracted.map(h => ({
+              name: h.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_'),
+              type: "TEXT"
+            }));
+            setPreviewColumns(initialColumns);
+          }
         }
       } catch (error) {
         console.error("Failed to read headers", error);
         if (!cancelled) {
           setFileHeaders([]);
           setFileHeaderStatus({ type: "error", message: error.message || "Failed to read headers." });
+          setDuplicateHeaders([]);
         }
       }
     };
@@ -438,7 +462,13 @@ export default function ImportPage() {
                     </thead>
                     <tbody>
                       {previewColumns.map((col, idx) => (
-                        <tr key={idx} className="border-b border-zinc-100 last:border-0">
+                        <tr
+                          key={idx}
+                          className={`border-b last:border-0 ${duplicateHeaders.includes((fileHeaders[idx] || "").toLowerCase().trim())
+                            ? "border-amber-200 bg-amber-50/60"
+                            : "border-zinc-100"
+                            }`}
+                        >
                           <td className="py-2 pr-4 font-medium text-zinc-700">
                             {fileHeaders[idx] || <i>(Column {idx + 1})</i>}
                           </td>
@@ -579,7 +609,7 @@ export default function ImportPage() {
               <button
                 className="rounded-full bg-zinc-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
                 type="submit"
-                disabled={loading}
+                disabled={loading || (creationMode && duplicateHeaders.length > 0)}
               >
                 {loading ? (creationMode ? "Creating & Importing..." : "Importing...") : (creationMode ? "Create & Import" : "Start import")}
               </button>
