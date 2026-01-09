@@ -484,7 +484,12 @@ export default function ImportPage() {
                     </tbody>
                   </table>
                 </div>
-                {previewColumns.length === 0 && <p className="text-zinc-500">No columns detected.</p>}
+                {fileHeaderStatus.message && (
+                  <p className={`mt-3 text-sm ${fileHeaderStatus.type === "error" ? "text-red-600 font-medium" : "text-zinc-500"}`}>
+                    {fileHeaderStatus.message}
+                  </p>
+                )}
+                {previewColumns.length === 0 && !fileHeaderStatus.message && <p className="text-zinc-500">No columns detected.</p>}
               </div>
             )}
 
