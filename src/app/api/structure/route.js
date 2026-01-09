@@ -119,6 +119,24 @@ export async function POST(request) {
         }
 
         const { databaseName, tableName, columns } = parsed.data;
+        const seenColumns = new Set();
+        const duplicateColumns = new Set();
+
+        for (const column of columns) {
+            const normalizedName = column.name.toLowerCase();
+            if (seenColumns.has(normalizedName)) {
+                duplicateColumns.add(normalizedName);
+            } else {
+                seenColumns.add(normalizedName);
+            }
+        }
+
+        if (duplicateColumns.size > 0) {
+            return Response.json(
+                { error: "Invalid request", details: `Duplicate column names: ${Array.from(duplicateColumns).join(", ")}` },
+                { status: 400 }
+            );
+        }
 
         pool = getDbPool(databaseName);
         client = await pool.connect();
