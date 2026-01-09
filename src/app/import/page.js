@@ -156,6 +156,27 @@ export default function ImportPage() {
             name: h.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_'),
             type: "TEXT"
           }));
+
+          // STRICT CHECK: Check for normalized name collisions
+          // e.g. "Name" and "name" both -> "name". This is fatal for table creation.
+          const normalizedCounts = {};
+          initialColumns.forEach(col => {
+            normalizedCounts[col.name] = (normalizedCounts[col.name] || 0) + 1;
+          });
+
+          const collisionList = Object.entries(normalizedCounts)
+            .filter(([_, count]) => count > 1)
+            .map(([name]) => name);
+
+          if (collisionList.length > 0) {
+            setPreviewColumns([]); // Clear previews to block creation
+            setFileHeaderStatus({
+              type: "error",
+              message: `Column name collisions detected. distinct headers normalize to the same database column: ${collisionList.join(", ")}. Please rename headers in Excel to be distinct (e.g. "Name", "name" -> "name" conflict).`
+            });
+            return;
+          }
+
           setPreviewColumns(initialColumns);
         }
       } catch (error) {
