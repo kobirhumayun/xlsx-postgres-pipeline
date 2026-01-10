@@ -40,7 +40,7 @@ export async function POST(request) {
             });
         };
 
-        const BATCH_LIMIT = 1000;
+        const BATCH_LIMIT = parseInt(process.env.QUERY_PREVIEW_LIMIT || "1000");
         const fetchedRows = await readRows(BATCH_LIMIT + 1);
 
         const limitReached = fetchedRows.length > BATCH_LIMIT;
@@ -59,6 +59,18 @@ export async function POST(request) {
             });
         });
         cursorObj = null;
+
+        if (finalRows.length === 0) {
+            try {
+                // Fetch fields from a limit 0 query if we have no rows to show headers
+                // Wrap in subquery to handle complex queries (CTEs, etc) safely
+                const metadataQuery = `SELECT * FROM (${query}) AS meta_fetch_wrapper LIMIT 0`;
+                const metaResult = await client.query(metadataQuery);
+                metaResult.fields.forEach(f => fields.push(f.name));
+            } catch (err) {
+                console.warn("Failed to fetch metadata for empty result", err);
+            }
+        }
 
         return Response.json({
             rows: finalRows,
