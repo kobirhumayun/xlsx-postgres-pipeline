@@ -5,6 +5,7 @@ services:
       target: runner
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      QUERY_PREVIEW_LIMIT: ${QUERY_PREVIEW_LIMIT:-1000}
     volumes:
       - ./backups:/backups
     restart: unless-stopped

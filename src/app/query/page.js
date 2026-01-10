@@ -391,8 +391,25 @@ export default function QueryPage() {
                     <section className="space-y-4">
                         <div className="flex items-center justify-between">
                             <h2 className="text-lg font-semibold">Results</h2>
-                            <span className="text-sm text-zinc-500">{results.rowCount} rows</span>
+                            <div className="flex gap-4 items-center">
+                                {results.limitReached && (
+                                    <span className="text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-100">
+                                        Preview Limited ({results.rowCount} rows)
+                                    </span>
+                                )}
+                                <span className="text-sm text-zinc-500">{results.rowCount} rows</span>
+                            </div>
                         </div>
+
+                        {results.limitReached && (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                                <p>
+                                    <strong>Display Limit Reached.</strong> The query returned more than {results.rowCount} rows.
+                                    Only the first {results.rowCount} are shown here to ensure performance.
+                                    Please use <strong>Export to Excel</strong> to download the full result set.
+                                </p>
+                            </div>
+                        )}
 
                         <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm">
                             {results.rows.length > 0 ? (
@@ -425,6 +442,6 @@ export default function QueryPage() {
                     </section>
                 )}
             </main>
-        </div>
+        </div >
     );
 }
