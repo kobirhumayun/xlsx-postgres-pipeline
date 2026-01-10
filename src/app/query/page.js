@@ -30,6 +30,7 @@ import { Label } from "@/components/ui/label";
 export default function QueryPage() {
     const [query, setQuery] = useState("");
     const [databaseName, setDatabaseName] = useState("");
+    const [limit, setLimit] = useState("");
     const [results, setResults] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -84,10 +85,17 @@ export default function QueryPage() {
         setResults(null);
 
         try {
+            const trimmedLimit = limit.trim();
+            const parsedLimit = trimmedLimit ? Number(trimmedLimit) : undefined;
+            const safeLimit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
             const data = await fetchJson("/api/query/run", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ query, databaseName: databaseName || undefined }),
+                body: JSON.stringify({
+                    query,
+                    databaseName: databaseName || undefined,
+                    limit: safeLimit
+                }),
             });
             setResults(data);
         } catch (err) {
@@ -310,6 +318,20 @@ export default function QueryPage() {
                                 />
                             </label>
 
+                            <label className="flex flex-col gap-2 text-sm font-medium">
+                                Max Rows
+                                <Input
+                                    type="number"
+                                    min="1"
+                                    inputMode="numeric"
+                                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                                    value={limit}
+                                    onChange={(e) => setLimit(e.target.value)}
+                                    placeholder="Leave blank to use the server default"
+                                />
+                                <span className="text-xs text-zinc-500">Applies only when the SQL does not specify LIMIT.</span>
+                            </label>
+
                             <div className="flex items-center gap-3">
                                 <Button
                                     onClick={handleRun}
@@ -391,7 +413,14 @@ export default function QueryPage() {
                     <section className="space-y-4">
                         <div className="flex items-center justify-between">
                             <h2 className="text-lg font-semibold">Results</h2>
-                            <span className="text-sm text-zinc-500">{results.rowCount} rows</span>
+                            <div className="flex items-center gap-2 text-sm text-zinc-500">
+                                <span>{results.rowCount} rows</span>
+                                {results.truncated && (
+                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                                        Truncated {results.limit ? `to ${results.limit}` : ""}
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
                         <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm">
