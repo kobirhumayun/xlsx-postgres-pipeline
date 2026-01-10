@@ -7,8 +7,7 @@ const querySchema = z.object({
     databaseName: z.string().optional(),
 });
 
-// Use pg-cursor to limit rows efficiently without crashing backend or frontend
-import Cursor from "pg-cursor";
+
 
 export async function POST(request) {
     let pool;
