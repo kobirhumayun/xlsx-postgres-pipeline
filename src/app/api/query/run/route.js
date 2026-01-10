@@ -1,14 +1,20 @@
 import { z } from "zod";
 import { getDbPool } from "@/lib/db";
+import Cursor from "pg-cursor";
 
 const querySchema = z.object({
     query: z.string().min(1, "Query is required"),
     databaseName: z.string().optional(),
 });
 
+// Use pg-cursor to limit rows efficiently without crashing backend or frontend
+import Cursor from "pg-cursor";
+
 export async function POST(request) {
     let pool;
     let client;
+    let cursorObj;
+
     try {
         const body = await request.json();
         const parsed = querySchema.safeParse(body);
@@ -22,15 +28,45 @@ export async function POST(request) {
         pool = getDbPool(databaseName);
         client = await pool.connect();
 
-        // Execute query
-        const result = await client.query(query);
+        // Use cursor to read max 1001 rows to check for truncation
+        cursorObj = client.query(new Cursor(query));
+
+        // Promisify cursor read
+        const readRows = (count) => {
+            return new Promise((resolve, reject) => {
+                cursorObj.read(count, (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows);
+                });
+            });
+        };
+
+        const BATCH_LIMIT = 1000;
+        const fetchedRows = await readRows(BATCH_LIMIT + 1);
+
+        const limitReached = fetchedRows.length > BATCH_LIMIT;
+        const finalRows = limitReached ? fetchedRows.slice(0, BATCH_LIMIT) : fetchedRows;
+
+        // Extract fields from first row if available
+        // Cursor doesn't give fields metadata directly for empty sets easily, 
+        // but for <1000 rows we only care if we have data.
+        const fields = finalRows.length > 0 ? Object.keys(finalRows[0]) : [];
+
+        // Close cursor early
+        await new Promise((resolve, reject) => {
+            cursorObj.close((err) => {
+                if (err) reject(err);
+                else resolve();
+            });
+        });
+        cursorObj = null;
 
         return Response.json({
-            rows: result.rows,
-            rowCount: result.rowCount,
-            fields: result.fields.map(f => f.name),
-            // Command type (INSERT, SELECT, etc) could be useful
-            command: result.command
+            rows: finalRows,
+            rowCount: finalRows.length,
+            fields: fields,
+            limitReached: limitReached,
+            command: "SELECT" // Cursor implies select
         });
 
     } catch (error) {
@@ -40,6 +76,10 @@ export async function POST(request) {
             { status: 500 }
         );
     } finally {
+        // Ensure cursor is closed if error occurred before manual close
+        if (cursorObj) {
+            cursorObj.close(() => { });
+        }
         if (client) client.release();
         if (pool && pool !== getDbPool()) {
             await pool.end();
