@@ -50,7 +50,11 @@ export const getDbPool = (databaseName) => {
   const currentUrl = new URL(process.env.DATABASE_URL);
   currentUrl.pathname = `/${databaseName}`;
 
-  const newPool = new Pool({ connectionString: currentUrl.toString() });
+  const newPool = new Pool({
+    connectionString: currentUrl.toString(),
+    max: 10, // Limit max connections per pool
+    idleTimeoutMillis: 30000 // Close idle connections after 30s
+  });
   poolCache.set(databaseName, newPool);
 
   return newPool;
