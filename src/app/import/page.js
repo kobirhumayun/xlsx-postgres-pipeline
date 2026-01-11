@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { fetchJson } from "@/lib/api-client";
-import ExcelJS from "exceljs";
 
 const emptyFlexibleForm = {
   databaseName: "",
@@ -93,37 +92,18 @@ export default function ImportPage() {
     const extractHeaders = async () => {
       try {
         setFileHeaderStatus({ type: "loading", message: "Reading headers..." });
-        const buffer = await file.arrayBuffer();
-        const workbook = new ExcelJS.Workbook();
-        await workbook.xlsx.load(buffer);
-
-        const worksheet = flexibleFormState.sheetName
-          ? workbook.getWorksheet(flexibleFormState.sheetName)
-          : workbook.worksheets[0];
-
-        if (!worksheet) {
-          throw new Error("Worksheet not found in file.");
+        const payload = new FormData();
+        payload.append("file", file);
+        if (flexibleFormState.sheetName) {
+          payload.append("sheetName", flexibleFormState.sheetName);
         }
 
-        const headerRow = worksheet.getRow(1);
-        const extracted = [];
-        if (Array.isArray(headerRow.values) && headerRow.values.length > 1) {
-          for (let i = 1; i < headerRow.values.length; i += 1) {
-            const value = headerRow.values[i];
-            if (value === null || value === undefined) continue;
-            const text = typeof value === "object" ? (value.text ?? value.result ?? "") : value;
-            const header = String(text).trim();
-            if (header) extracted.push(header);
-          }
-        } else if (headerRow.cellCount > 0) {
-          for (let i = 1; i <= headerRow.cellCount; i += 1) {
-            const cell = headerRow.getCell(i);
-            const value = cell.value;
-            const text = typeof value === "object" ? (value?.text ?? value?.result ?? "") : value;
-            const header = String(text ?? "").trim();
-            if (header) extracted.push(header);
-          }
-        }
+        const data = await fetchJson("/api/import/headers", {
+          method: "POST",
+          body: payload,
+        });
+
+        const extracted = data.headers ?? [];
 
         if (!cancelled) {
           // Check for duplicates
