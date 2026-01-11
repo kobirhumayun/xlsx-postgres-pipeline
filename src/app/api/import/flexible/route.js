@@ -15,6 +15,7 @@ const formSchema = z.object({
 });
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300; // 5 minutes
 
 export async function POST(request) {
     let pool;
