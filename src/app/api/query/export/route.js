@@ -100,9 +100,7 @@ export async function POST(request) {
                     // Release DB resources when stream is done or errors
                     if (client) client.release();
                     if (pool && pool !== getDbPool()) {
-                        // We can't await here easily inside start() without holding up the close?
-                        // But safe to trigger and forget or await.
-                        pool.end().catch(console.error);
+                        // Pool is now cached, do not end
                     }
                 }
             }

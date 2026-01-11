@@ -349,8 +349,6 @@ export async function POST(request) {
         );
     } finally {
         if (client) client.release();
-        if (pool && pool !== getDbPool()) {
-            await pool.end();
-        }
+        // Do not close the pool as it is now cached and shared
     }
 }

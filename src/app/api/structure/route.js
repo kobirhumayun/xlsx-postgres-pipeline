@@ -103,7 +103,7 @@ export async function GET(request) {
     } finally {
         if (client) client.release();
         if (pool && pool !== getDbPool()) {
-            await pool.end();
+            // Pool is now cached, do not end
         }
     }
 }
@@ -187,7 +187,7 @@ export async function POST(request) {
     } finally {
         if (client) client.release();
         if (pool && pool !== getDbPool()) {
-            await pool.end();
+            // Pool is now cached, do not end
         }
     }
 }
