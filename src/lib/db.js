@@ -32,6 +32,8 @@ if (process.env.NODE_ENV !== "production") {
 
 export const prisma = prismaClient;
 
+const poolCache = new Map();
+
 /**
  * Get a pg.Pool instance for a specific database.
  * @param {string} [databaseName] - Optional database name. If omitted, uses default.
@@ -40,9 +42,16 @@ export const prisma = prismaClient;
 export const getDbPool = (databaseName) => {
   if (!databaseName) return pool;
 
+  if (poolCache.has(databaseName)) {
+    return poolCache.get(databaseName);
+  }
+
   // Construct new connection string with swapped DB name
   const currentUrl = new URL(process.env.DATABASE_URL);
   currentUrl.pathname = `/${databaseName}`;
 
-  return new Pool({ connectionString: currentUrl.toString() });
+  const newPool = new Pool({ connectionString: currentUrl.toString() });
+  poolCache.set(databaseName, newPool);
+
+  return newPool;
 };
