@@ -2,7 +2,7 @@ import { Readable } from "stream";
 import ExcelJS from "exceljs";
 import { z } from "zod";
 import { getDbPool } from "@/lib/db";
-import { toTrimmedString, excelDateToISO } from "@/lib/ingest";
+import { toTrimmedString, parseValue } from "@/lib/ingest";
 
 // Reusing some helper logic, but keeping it simple for raw SQL approach
 // Since we are inserting into ANY table, we can't strongly type against Prisma schema here easily.
@@ -15,6 +15,7 @@ const formSchema = z.object({
 });
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 300; // 5 minutes
 
 export async function POST(request) {
     let pool;
@@ -289,42 +290,15 @@ export async function POST(request) {
                 let val = cell.value;
                 const targetType = columnTypeMap.get(headerName) || 'text';
 
-                // Specific Date Handling
-                const isDateType = ['date', 'timestamp', 'timestamptz', 'timestamp without time zone', 'timestamp with time zone'].some(t => targetType.includes(t));
-
-                if (isDateType) {
-                    if (typeof val === 'number') {
-                        val = excelDateToISO(val);
-                    } else if (val instanceof Date) {
-                        val = val.toISOString();
-                    } else if (typeof val === 'string' && val.trim() !== '') {
-                        // Attempt to parse string date
-                        const d = new Date(val);
-                        if (!isNaN(d.getTime())) {
-                            val = d.toISOString();
-                        }
-                    }
-                }
-
-                if (val && typeof val === 'object' && !(val instanceof Date)) { // Date already handled or became string
+                // Handle ExcelJS object values (formulas, hyperlinks)
+                if (val && typeof val === 'object' && !(val instanceof Date)) {
                     if (val.text) val = val.text;
                     else if (val.result) val = val.result;
-                    // Handle other objects if needed, or fall through
                 }
 
-                // Sanitize: Postgres rejects empty strings for non-text types. Convert "" to null.
-                if (typeof val === 'string') {
-                    const trimmed = val.trim();
-                    if (trimmed === '') {
-                        val = null;
-                    } else {
-                        // Update val to trimmed version if it's text, 
-                        // but if we just converted a date to ISO string it's already trimmed/valid.
-                        // Ideally we trim everything unless it's JSON intentionally.
-                        val = trimmed;
-                    }
-                }
-                rowValues.push(val);
+                // Use centralized parsing logic
+                const { parsedValue } = parseValue(val, targetType);
+                rowValues.push(parsedValue);
             }
 
             batchData.push({ rowNumber: row.number, values: rowValues });

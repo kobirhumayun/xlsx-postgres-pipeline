@@ -3,6 +3,11 @@ const nextConfig = {
   /* config options here */
   output: "standalone",
   reactCompiler: true,
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "128mb",
+    },
+  },
 };
 
 export default nextConfig;
