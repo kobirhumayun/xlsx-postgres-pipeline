@@ -32,7 +32,7 @@ if (fs.existsSync(envPath)) {
     });
 }
 
-const SERVER_URL = 'http://localhost:3002';
+const SERVER_URL = 'http://localhost:3000';
 
 async function runTest() {
     console.log("Starting DDL/DML Verification...");

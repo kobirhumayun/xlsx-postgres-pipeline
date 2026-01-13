@@ -28,12 +28,12 @@ export async function POST(request) {
         client = await pool.connect();
 
         // Check if query is likely a SELECT or WITH (CTE) to use cursor
-        const trimmedQuery = query.trim().toUpperCase();
-        const isSelect = trimmedQuery.startsWith("SELECT") || trimmedQuery.startsWith("WITH");
+        // Regex handles leading whitespace and case-insensitivity
+        const isSelect = /^\s*(?:SELECT|WITH)\b/i.test(query);
 
         if (isSelect) {
             // --- SELECT / CTE PATH (Use Cursor) ---
-            
+
             // Use cursor to read max 1001 rows to check for truncation
             cursorObj = client.query(new Cursor(query));
 
@@ -87,9 +87,9 @@ export async function POST(request) {
 
         } else {
             // --- DDL / DML PATH (Direct Execution) ---
-            
+
             const result = await client.query(query);
-            
+
             return Response.json({
                 rows: result.rows || [],
                 rowCount: result.rowCount,
