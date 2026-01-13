@@ -27,58 +27,77 @@ export async function POST(request) {
         pool = getDbPool(databaseName);
         client = await pool.connect();
 
-        // Use cursor to read max 1001 rows to check for truncation
-        cursorObj = client.query(new Cursor(query));
+        // Check if query is likely a SELECT or WITH (CTE) to use cursor
+        const trimmedQuery = query.trim().toUpperCase();
+        const isSelect = trimmedQuery.startsWith("SELECT") || trimmedQuery.startsWith("WITH");
 
-        // Promisify cursor read
-        const readRows = (count) => {
-            return new Promise((resolve, reject) => {
-                cursorObj.read(count, (err, rows) => {
+        if (isSelect) {
+            // --- SELECT / CTE PATH (Use Cursor) ---
+            
+            // Use cursor to read max 1001 rows to check for truncation
+            cursorObj = client.query(new Cursor(query));
+
+            // Promisify cursor read
+            const readRows = (count) => {
+                return new Promise((resolve, reject) => {
+                    cursorObj.read(count, (err, rows) => {
+                        if (err) reject(err);
+                        else resolve(rows);
+                    });
+                });
+            };
+
+            const BATCH_LIMIT = parseInt(process.env.QUERY_PREVIEW_LIMIT || "1000");
+            const fetchedRows = await readRows(BATCH_LIMIT + 1);
+
+            const limitReached = fetchedRows.length > BATCH_LIMIT;
+            const finalRows = limitReached ? fetchedRows.slice(0, BATCH_LIMIT) : fetchedRows;
+
+            // Extract fields from first row if available
+            const fields = finalRows.length > 0 ? Object.keys(finalRows[0]) : [];
+
+            // Close cursor early
+            await new Promise((resolve, reject) => {
+                cursorObj.close((err) => {
                     if (err) reject(err);
-                    else resolve(rows);
+                    else resolve();
                 });
             });
-        };
+            cursorObj = null;
 
-        const BATCH_LIMIT = parseInt(process.env.QUERY_PREVIEW_LIMIT || "1000");
-        const fetchedRows = await readRows(BATCH_LIMIT + 1);
-
-        const limitReached = fetchedRows.length > BATCH_LIMIT;
-        const finalRows = limitReached ? fetchedRows.slice(0, BATCH_LIMIT) : fetchedRows;
-
-        // Extract fields from first row if available
-        // Cursor doesn't give fields metadata directly for empty sets easily, 
-        // but for <1000 rows we only care if we have data.
-        const fields = finalRows.length > 0 ? Object.keys(finalRows[0]) : [];
-
-        // Close cursor early
-        await new Promise((resolve, reject) => {
-            cursorObj.close((err) => {
-                if (err) reject(err);
-                else resolve();
-            });
-        });
-        cursorObj = null;
-
-        if (finalRows.length === 0) {
-            try {
-                // Fetch fields from a limit 0 query if we have no rows to show headers
-                // Wrap in subquery to handle complex queries (CTEs, etc) safely
-                const metadataQuery = `SELECT * FROM (${query}) AS meta_fetch_wrapper LIMIT 0`;
-                const metaResult = await client.query(metadataQuery);
-                metaResult.fields.forEach(f => fields.push(f.name));
-            } catch (err) {
-                console.warn("Failed to fetch metadata for empty result", err);
+            if (finalRows.length === 0) {
+                try {
+                    // Fetch fields from a limit 0 query if we have no rows to show headers
+                    // Wrap in subquery to handle complex queries (CTEs, etc) safely
+                    const metadataQuery = `SELECT * FROM (${query}) AS meta_fetch_wrapper LIMIT 0`;
+                    const metaResult = await client.query(metadataQuery);
+                    metaResult.fields.forEach(f => fields.push(f.name));
+                } catch (err) {
+                    console.warn("Failed to fetch metadata for empty result", err);
+                }
             }
-        }
 
-        return Response.json({
-            rows: finalRows,
-            rowCount: finalRows.length,
-            fields: fields,
-            limitReached: limitReached,
-            command: "SELECT" // Cursor implies select
-        });
+            return Response.json({
+                rows: finalRows,
+                rowCount: finalRows.length,
+                fields: fields,
+                limitReached: limitReached,
+                command: "SELECT"
+            });
+
+        } else {
+            // --- DDL / DML PATH (Direct Execution) ---
+            
+            const result = await client.query(query);
+            
+            return Response.json({
+                rows: result.rows || [],
+                rowCount: result.rowCount,
+                fields: result.fields ? result.fields.map(f => f.name) : [],
+                limitReached: false,
+                command: result.command
+            });
+        }
 
     } catch (error) {
         console.error("Query Execution Error", error);
