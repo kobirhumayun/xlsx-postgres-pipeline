@@ -90,12 +90,22 @@ export async function POST(request) {
 
             const result = await client.query(query);
 
+            const isDml = ["INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER"].includes(result.command);
+            let message = "Query executed successfully.";
+
+            if (result.rowCount !== null && result.rowCount !== undefined) {
+                message = `Success. ${result.rowCount} row(s) affected.`;
+            } else if (result.command) {
+                message = `Success. Command: ${result.command}`;
+            }
+
             return Response.json({
                 rows: result.rows || [],
                 rowCount: result.rowCount,
                 fields: result.fields ? result.fields.map(f => f.name) : [],
                 limitReached: false,
-                command: result.command
+                command: result.command,
+                message: message
             });
         }
 

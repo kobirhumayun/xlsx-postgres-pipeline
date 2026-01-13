@@ -435,7 +435,11 @@ export default function QueryPage() {
                                 </table>
                             ) : (
                                 <div className="p-8 text-center text-zinc-500">
-                                    No rows returned (Command: {results.command})
+                                    {results.message ? (
+                                        <span className="font-medium text-green-600">{results.message}</span>
+                                    ) : (
+                                        <span>No rows returned (Command: {results.command})</span>
+                                    )}
                                 </div>
                             )}
                         </div>
