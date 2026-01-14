@@ -30,6 +30,10 @@ COPY prisma.config.mjs ./
 COPY --from=builder /app/backup/backup.sh /usr/local/bin/backup.sh
 COPY --from=builder /app/backup/restore.sh /usr/local/bin/restore.sh
 
+# Pre-install prisma to avoid runtime installation by npx
+RUN npm install prisma
+
+
 COPY entrypoint.sh ./
 RUN sed -i 's/\r$//' entrypoint.sh
 RUN sed -i 's/\r$//' /usr/local/bin/backup.sh /usr/local/bin/restore.sh
