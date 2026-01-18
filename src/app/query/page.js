@@ -57,6 +57,15 @@ export default function QueryPage() {
     const [savedQueriesError, setSavedQueriesError] = useState(null);
     const savedQueriesScrollRef = useRef(null);
     const refreshStateRef = useRef({ shouldRestoreScroll: false, focusId: null, scrollTop: 0 });
+    const trimmedNewQueryName = newQueryName.trim();
+    const trimmedQuery = query.trim();
+    const isSaveNameMissing = !trimmedNewQueryName;
+    const isSaveQueryMissing = !trimmedQuery;
+    const isDuplicateQueryName = !!trimmedNewQueryName && savedQueries.some((sq) => {
+        const existingName = sq.name ? sq.name.trim().toLowerCase() : "";
+        return existingName && existingName === trimmedNewQueryName.toLowerCase();
+    });
+    const isSaveDisabled = isSaving || isSaveNameMissing || isSaveQueryMissing || isDuplicateQueryName;
 
     useEffect(() => {
         fetchJson("/api/structure").then(data => {
@@ -172,7 +181,7 @@ export default function QueryPage() {
     };
 
     const handleSaveQuery = async () => {
-        if (!newQueryName.trim() || !query.trim()) return;
+        if (isSaveDisabled) return;
         setIsSaving(true);
         try {
             await fetchJson("/api/saved-queries", {
@@ -467,12 +476,19 @@ export default function QueryPage() {
                                                 <Label htmlFor="name" className="text-right">
                                                     Name
                                                 </Label>
-                                                <Input
-                                                    id="name"
-                                                    value={newQueryName}
-                                                    onChange={(e) => setNewQueryName(e.target.value)}
-                                                    className="col-span-3"
-                                                />
+                                                <div className="col-span-3 space-y-1">
+                                                    <Input
+                                                        id="name"
+                                                        value={newQueryName}
+                                                        onChange={(e) => setNewQueryName(e.target.value)}
+                                                    />
+                                                    {isSaveNameMissing && (
+                                                        <p className="text-xs text-red-600">Name is required.</p>
+                                                    )}
+                                                    {isDuplicateQueryName && (
+                                                        <p className="text-xs text-red-600">A saved query with this name already exists.</p>
+                                                    )}
+                                                </div>
                                             </div>
                                             <div className="grid grid-cols-4 items-center gap-4">
                                                 <Label htmlFor="description" className="text-right">
@@ -485,9 +501,12 @@ export default function QueryPage() {
                                                     className="col-span-3"
                                                 />
                                             </div>
+                                            {isSaveQueryMissing && (
+                                                <p className="text-xs text-red-600">Enter a SQL query before saving.</p>
+                                            )}
                                         </div>
                                         <DialogFooter>
-                                            <Button type="submit" onClick={handleSaveQuery} disabled={isSaving}>
+                                            <Button type="submit" onClick={handleSaveQuery} disabled={isSaveDisabled}>
                                                 {isSaving ? "Saving..." : "Save changes"}
                                             </Button>
                                         </DialogFooter>
