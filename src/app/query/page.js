@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { fetchJson } from "@/lib/api-client";
-import { Trash2, Save, Play, Download, Pencil } from "lucide-react";
+import { Trash2, Save, Play, Download, Pencil, Star } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -82,6 +82,13 @@ export default function QueryPage() {
             return name.includes(normalizedSavedQuerySearch) || description.includes(normalizedSavedQuerySearch);
         })
         : savedQueries;
+    const orderedSavedQueries = [...filteredSavedQueries].sort((a, b) => {
+        const pinnedDelta = Number(Boolean(b.isPinned)) - Number(Boolean(a.isPinned));
+        if (pinnedDelta !== 0) return pinnedDelta;
+        const aTime = new Date(a.updatedAt).getTime();
+        const bTime = new Date(b.updatedAt).getTime();
+        return bTime - aTime;
+    });
     const hasUnsavedChanges = query !== lastLoadedQuery || databaseName !== lastLoadedDatabaseName;
 
     const formatTimestamp = (value) => {
@@ -382,6 +389,25 @@ export default function QueryPage() {
         }
     };
 
+    const handleTogglePin = async (sq, e) => {
+        if (e) e.stopPropagation();
+        try {
+            await fetchJson("/api/saved-queries", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    id: sq.id,
+                    isPinned: !sq.isPinned,
+                }),
+            });
+            loadSavedQueries({ preserveScroll: true, focusId: sq.id });
+            showSavedQueriesNotice(sq.isPinned ? "Saved query unpinned." : "Saved query pinned.");
+        } catch (err) {
+            console.error(err);
+            showSavedQueriesNotice(err.message || "Failed to update pin", "error");
+        }
+    };
+
     const loadQueryIntoEditor = (sq) => {
         const nextQuery = sq.query || "";
         const nextDatabaseName = sq.databaseName || "";
@@ -543,7 +569,7 @@ export default function QueryPage() {
                                     <p className="text-xs text-zinc-400 italic px-2">No matches found.</p>
                                 ) : (
                                     <ul className="space-y-2">
-                                        {filteredSavedQueries.map((sq) => {
+                                        {orderedSavedQueries.map((sq) => {
                                             const meta = buildSavedQueryMeta(sq);
                                             const preview = buildQueryPreview(sq.query);
                                             return (
@@ -574,6 +600,14 @@ export default function QueryPage() {
                                                         )}
                                                     </div>
                                                     <div className="flex items-center gap-1">
+                                                        <button
+                                                            onClick={(e) => handleTogglePin(sq, e)}
+                                                            className={`p-1 ${sq.isPinned ? "text-amber-500 hover:text-amber-600" : "text-zinc-400 hover:text-zinc-700"}`}
+                                                            title={sq.isPinned ? "Unpin" : "Pin"}
+                                                            aria-label={`${sq.isPinned ? "Unpin" : "Pin"} saved query ${sq.name || ""}`}
+                                                        >
+                                                            <Star className="h-3 w-3" fill={sq.isPinned ? "currentColor" : "none"} />
+                                                        </button>
                                                         <button
                                                             onClick={(e) => openEditDialog(sq, e)}
                                                             className="p-1 text-zinc-400 hover:text-zinc-700"
