@@ -55,6 +55,7 @@ export default function QueryPage() {
     const [isUpdating, setIsUpdating] = useState(false);
     const [savedQueriesLoading, setSavedQueriesLoading] = useState(false);
     const [savedQueriesError, setSavedQueriesError] = useState(null);
+    const [savedQuerySearch, setSavedQuerySearch] = useState("");
     const savedQueriesScrollRef = useRef(null);
     const refreshStateRef = useRef({ shouldRestoreScroll: false, focusId: null, scrollTop: 0 });
     const trimmedNewQueryName = newQueryName.trim();
@@ -66,6 +67,15 @@ export default function QueryPage() {
         return existingName && existingName === trimmedNewQueryName.toLowerCase();
     });
     const isSaveDisabled = isSaving || isSaveNameMissing || isSaveQueryMissing || isDuplicateQueryName;
+    const trimmedSavedQuerySearch = savedQuerySearch.trim();
+    const normalizedSavedQuerySearch = trimmedSavedQuerySearch.toLowerCase();
+    const filteredSavedQueries = normalizedSavedQuerySearch
+        ? savedQueries.filter((sq) => {
+            const name = sq.name ? sq.name.toLowerCase() : "";
+            const description = sq.description ? sq.description.toLowerCase() : "";
+            return name.includes(normalizedSavedQuerySearch) || description.includes(normalizedSavedQuerySearch);
+        })
+        : savedQueries;
 
     useEffect(() => {
         fetchJson("/api/structure").then(data => {
@@ -272,6 +282,24 @@ export default function QueryPage() {
         setQuery(prev => prev + ` ${fullName} `);
     };
 
+    const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    const highlightMatch = (text, term) => {
+        if (!term) return text;
+        const safeTerm = escapeRegExp(term);
+        const regex = new RegExp(`(${safeTerm})`, "ig");
+        return text.split(regex).map((part, index) => {
+            if (part.toLowerCase() === term.toLowerCase()) {
+                return (
+                    <span key={`${part}-${index}`} className="rounded bg-amber-100 px-0.5 text-amber-900">
+                        {part}
+                    </span>
+                );
+            }
+            return <span key={`${part}-${index}`}>{part}</span>;
+        });
+    };
+
     return (
         <div className="min-h-screen bg-zinc-50 px-6 py-10 text-zinc-900">
             <main className="mx-auto flex w-full max-w-7xl flex-col gap-8">
@@ -333,6 +361,16 @@ export default function QueryPage() {
                             <h2 className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500 p-2 rounded mb-2">
                                 Saved Queries
                             </h2>
+                            <div className="mb-3">
+                                <label className="sr-only" htmlFor="saved-query-search">Search saved queries</label>
+                                <Input
+                                    id="saved-query-search"
+                                    value={savedQuerySearch}
+                                    onChange={(e) => setSavedQuerySearch(e.target.value)}
+                                    placeholder="Search saved queries"
+                                    className="h-8 text-xs"
+                                />
+                            </div>
                             {savedQueriesError && (
                                 <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-red-100 bg-red-50 px-2 py-1 text-[11px] text-red-600">
                                     <span className="truncate">{savedQueriesError}</span>
@@ -354,9 +392,11 @@ export default function QueryPage() {
                                     </div>
                                 ) : savedQueries.length === 0 ? (
                                     <p className="text-xs text-zinc-400 italic px-2">No saved queries</p>
+                                ) : filteredSavedQueries.length === 0 ? (
+                                    <p className="text-xs text-zinc-400 italic px-2">No matches found.</p>
                                 ) : (
                                     <ul className="space-y-2">
-                                        {savedQueries.map(sq => (
+                                        {filteredSavedQueries.map(sq => (
                                             <li
                                                 key={sq.id}
                                                 id={`saved-query-${sq.id}`}
@@ -364,8 +404,14 @@ export default function QueryPage() {
                                                 onClick={() => loadQueryIntoEditor(sq)}
                                             >
                                                 <div className="overflow-hidden">
-                                                    <p className="text-sm font-medium text-zinc-900 truncate" title={sq.name}>{sq.name}</p>
-                                                    {sq.description && <p className="text-xs text-zinc-500 truncate" title={sq.description}>{sq.description}</p>}
+                                                    <p className="text-sm font-medium text-zinc-900 truncate" title={sq.name}>
+                                                        {sq.name ? highlightMatch(sq.name, trimmedSavedQuerySearch) : null}
+                                                    </p>
+                                                    {sq.description && (
+                                                        <p className="text-xs text-zinc-500 truncate" title={sq.description}>
+                                                            {highlightMatch(sq.description, trimmedSavedQuerySearch)}
+                                                        </p>
+                                                    )}
                                                 </div>
                                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <button
