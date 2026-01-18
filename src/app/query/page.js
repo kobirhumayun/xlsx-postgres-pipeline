@@ -130,6 +130,26 @@ export default function QueryPage() {
         return `${normalized.slice(0, maxLength)}…`;
     };
 
+    const extractPrimaryTable = (value) => {
+        if (!value) return "";
+        const normalized = value.replace(/\s+/g, " ").trim();
+        const match = normalized.match(/\bfrom\s+([^\s;]+)|\bjoin\s+([^\s;]+)/i);
+        if (!match) return "";
+        const table = match[1] || match[2] || "";
+        return table.replace(/["'`]/g, "");
+    };
+
+    const buildSuggestedQueryName = (value) => {
+        const table = extractPrimaryTable(value);
+        if (table) return `Query ${table}`;
+        return `Query ${new Date().toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+        })}`;
+    };
+
     useEffect(() => {
         fetchJson("/api/structure").then(data => {
             if (data.items) setDbList(data.items);
@@ -143,6 +163,12 @@ export default function QueryPage() {
             }
         };
     }, []);
+
+    useEffect(() => {
+        if (!isSaveDialogOpen) return;
+        if (newQueryName.trim()) return;
+        setNewQueryName(buildSuggestedQueryName(query));
+    }, [isSaveDialogOpen, newQueryName, query]);
 
     const loadSavedQueries = async ({ preserveScroll = false, focusId = null } = {}) => {
         if (preserveScroll && savedQueriesScrollRef.current) {
@@ -662,6 +688,18 @@ export default function QueryPage() {
                                             </DialogDescription>
                                         </DialogHeader>
                                         <div className="grid gap-4 py-4">
+                                            <div className="grid gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+                                                <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                                                    <span>SQL Preview</span>
+                                                    <span className="text-[10px] font-medium normal-case text-zinc-400">Read-only</span>
+                                                </div>
+                                                <pre className="max-h-24 overflow-auto whitespace-pre-wrap rounded-md bg-white p-2 text-xs text-zinc-700 shadow-inner">
+                                                    {trimmedQuery || "No SQL in the editor yet."}
+                                                </pre>
+                                                {isSaveQueryMissing && (
+                                                    <p className="text-xs text-amber-700">Add a SQL query to enable saving.</p>
+                                                )}
+                                            </div>
                                             <div className="grid grid-cols-4 items-center gap-4">
                                                 <Label htmlFor="name" className="text-right">
                                                     Name
