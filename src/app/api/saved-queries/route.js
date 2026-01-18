@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 export async function GET() {
     try {
         const savedQueries = await prisma.savedQuery.findMany({
-            orderBy: { updatedAt: "desc" },
+            orderBy: [{ isPinned: "desc" }, { updatedAt: "desc" }],
         });
         return NextResponse.json(savedQueries);
     } catch (error) {
@@ -19,7 +19,7 @@ export async function GET() {
 export async function POST(request) {
     try {
         const body = await request.json();
-        const { name, description, query, databaseName } = body;
+        const { name, description, query, databaseName, isPinned } = body;
 
         if (!name || !query) {
             return NextResponse.json(
@@ -34,6 +34,7 @@ export async function POST(request) {
                 description,
                 query,
                 databaseName,
+                isPinned: Boolean(isPinned),
             },
         });
 
@@ -50,7 +51,7 @@ export async function POST(request) {
 export async function PUT(request) {
     try {
         const body = await request.json();
-        const { id, name, description, query, databaseName } = body;
+        const { id, name, description, query, databaseName, isPinned } = body;
 
         if (!id) {
             return NextResponse.json(
@@ -59,14 +60,23 @@ export async function PUT(request) {
             );
         }
 
+        const data = {};
+        if (name !== undefined) data.name = name;
+        if (description !== undefined) data.description = description;
+        if (query !== undefined) data.query = query;
+        if (databaseName !== undefined) data.databaseName = databaseName;
+        if (isPinned !== undefined) data.isPinned = Boolean(isPinned);
+
+        if (Object.keys(data).length === 0) {
+            return NextResponse.json(
+                { error: "No fields provided to update" },
+                { status: 400 }
+            );
+        }
+
         const updatedQuery = await prisma.savedQuery.update({
             where: { id },
-            data: {
-                name,
-                description,
-                query,
-                databaseName,
-            },
+            data,
         });
 
         return NextResponse.json(updatedQuery);

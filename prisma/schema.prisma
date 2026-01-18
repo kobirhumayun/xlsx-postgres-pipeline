@@ -15,6 +15,7 @@ model SavedQuery {
   description  String?
   query        String
   databaseName String?
+  isPinned     Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
