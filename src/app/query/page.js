@@ -120,23 +120,12 @@ export default function QueryPage() {
         setIsSaveDialogOpen(true);
     };
 
-    const handleSaveQuery = async ({ name, description }) => {
-        if (!name.trim()) return; // Should potentially show error in dialog, but this is basic safeguard
+    const handleSaveQuery = async ({ name, description, query, databaseName }) => {
+        if (!name.trim()) return;
 
-        // If creating new, we need query content. If editing, we update metadata but keep query content unless we assume user wants to update query to current editor content?
-        // DECISION: When editing, we should probably update the query content to match what is currently in the editor IF the user loaded it. 
-        // BUT, complex UX. Let's assume simpler: Edit Metadata only? Or Edit everything?
-        // Implementation Plan said: "Change name and query content."
-        // So we should use the `query` and `databaseName` from the state (what's in the editor).
-        // This means to edit a query effectively, one should Load it -> Make changes -> Click Edit.
-        // OR: If I click Edit on the list, maybe I just want to rename it?
-        // If I click Edit on list, I'm NOT necessarily looking at that query in the editor.
-        // Let's stick to: Edit updates Name/Desc/Query/DB to current state. 
-        // Wait, if I click "Edit" on a query in the list, but I have a DIFFERENT query in the editor, I might accidentally overwrite the saved query with unrelated code.
-        // SAFE APPROACH: If I click Edit, it should probably Load the query first? Or just edit metadata?
-        // Let's assume for now we use the Current Editor State for the Query Content.
-        // CAUTION: User needs to know this.
-        // Improved logic: If editing, we use the `editingQuery` ID.
+        // Now we use the values passed from the Dialog, which are either:
+        // 1. The edited values from the "Edit" mode
+        // 2. The default values (current editor state) from the "Create" mode
 
         setIsSaving(true);
         try {
@@ -145,8 +134,8 @@ export default function QueryPage() {
                 id: editingQuery?.id,
                 name,
                 description,
-                query: query, // Use current editor content
-                databaseName: databaseName // Use current editor content
+                query: query,
+                databaseName: databaseName
             };
 
             await fetchJson("/api/saved-queries", {
@@ -310,6 +299,8 @@ export default function QueryPage() {
                                     onSave={handleSaveQuery}
                                     isSaving={isSaving}
                                     editingQuery={editingQuery}
+                                    currentQuery={query}
+                                    currentDatabase={databaseName}
                                 />
                             </div>
 
