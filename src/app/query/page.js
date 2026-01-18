@@ -2,30 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { fetchJson } from "@/lib/api-client";
-import { Trash2, Save, Play, Download } from "lucide-react";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { Save, Play, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { SavedQueriesList } from "@/components/query/saved-queries-list";
+import { SaveQueryDialog } from "@/components/query/save-query-dialog";
 
 export default function QueryPage() {
     const [query, setQuery] = useState("");
@@ -43,8 +23,7 @@ export default function QueryPage() {
     // Saved Queries State
     const [savedQueries, setSavedQueries] = useState([]);
     const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
-    const [newQueryName, setNewQueryName] = useState("");
-    const [newQueryDesc, setNewQueryDesc] = useState("");
+    const [editingQuery, setEditingQuery] = useState(null); // Track which query is being edited
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
@@ -67,8 +46,6 @@ export default function QueryPage() {
                 if (data.type === 'tables') setTableList(data.items);
             }).catch(console.error);
 
-            // Auto-set the query database context if desired, or let user type it manually?
-            // Simpler to set the field.
             setDatabaseName(selectedDb);
         } else {
             setTableList([]);
@@ -113,7 +90,6 @@ export default function QueryPage() {
                 throw new Error(json.error || "Export failed");
             }
 
-            // Handle file download
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement("a");
@@ -132,23 +108,55 @@ export default function QueryPage() {
         }
     };
 
-    const handleSaveQuery = async () => {
-        if (!newQueryName.trim() || !query.trim()) return;
+    // Open dialog for creating new query
+    const handleOpenSaveDialog = () => {
+        setEditingQuery(null);
+        setIsSaveDialogOpen(true);
+    };
+
+    // Open dialog for editing existing query
+    const handleEditQuery = (sq) => {
+        setEditingQuery(sq);
+        setIsSaveDialogOpen(true);
+    };
+
+    const handleSaveQuery = async ({ name, description }) => {
+        if (!name.trim()) return; // Should potentially show error in dialog, but this is basic safeguard
+
+        // If creating new, we need query content. If editing, we update metadata but keep query content unless we assume user wants to update query to current editor content?
+        // DECISION: When editing, we should probably update the query content to match what is currently in the editor IF the user loaded it. 
+        // BUT, complex UX. Let's assume simpler: Edit Metadata only? Or Edit everything?
+        // Implementation Plan said: "Change name and query content."
+        // So we should use the `query` and `databaseName` from the state (what's in the editor).
+        // This means to edit a query effectively, one should Load it -> Make changes -> Click Edit.
+        // OR: If I click Edit on the list, maybe I just want to rename it?
+        // If I click Edit on list, I'm NOT necessarily looking at that query in the editor.
+        // Let's stick to: Edit updates Name/Desc/Query/DB to current state. 
+        // Wait, if I click "Edit" on a query in the list, but I have a DIFFERENT query in the editor, I might accidentally overwrite the saved query with unrelated code.
+        // SAFE APPROACH: If I click Edit, it should probably Load the query first? Or just edit metadata?
+        // Let's assume for now we use the Current Editor State for the Query Content.
+        // CAUTION: User needs to know this.
+        // Improved logic: If editing, we use the `editingQuery` ID.
+
         setIsSaving(true);
         try {
+            const method = editingQuery ? "PUT" : "POST";
+            const body = {
+                id: editingQuery?.id,
+                name,
+                description,
+                query: query, // Use current editor content
+                databaseName: databaseName // Use current editor content
+            };
+
             await fetchJson("/api/saved-queries", {
-                method: "POST",
+                method,
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    name: newQueryName,
-                    description: newQueryDesc,
-                    query: query,
-                    databaseName: databaseName
-                }),
+                body: JSON.stringify(body),
             });
+
             setIsSaveDialogOpen(false);
-            setNewQueryName("");
-            setNewQueryDesc("");
+            setEditingQuery(null);
             loadSavedQueries();
         } catch (err) {
             console.error(err);
@@ -159,7 +167,7 @@ export default function QueryPage() {
     };
 
     const handleDeleteQuery = async (id, e) => {
-        if (e) e.stopPropagation(); // Stop propagation if event exists
+        if (e) e.stopPropagation();
         try {
             await fetch("/api/saved-queries?id=" + id, { method: "DELETE" });
             loadSavedQueries();
@@ -196,8 +204,8 @@ export default function QueryPage() {
                 <div className="grid gap-6 lg:grid-cols-4">
 
                     {/* Sidebar: Schema Browser & Saved Queries */}
-                    <aside className="lg:col-span-1 space-y-4">
-                        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+                    <aside className="lg:col-span-1 space-y-4 flex flex-col h-[calc(100vh-200px)] sticky top-6">
+                        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm flex-shrink-0">
                             <h2 className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500 p-2 rounded mb-2">
                                 Schema Browser
                             </h2>
@@ -215,7 +223,7 @@ export default function QueryPage() {
 
                             <div className="mt-4">
                                 <h3 className="text-xs font-semibold text-zinc-400 uppercase mb-2">Tables</h3>
-                                <ul className="space-y-1 max-h-[300px] overflow-y-auto">
+                                <ul className="space-y-1 max-h-[200px] overflow-y-auto">
                                     {tableList.map(t => (
                                         <li key={t.fullName}>
                                             <button
@@ -234,76 +242,36 @@ export default function QueryPage() {
                             </div>
                         </div>
 
-                        {/* Saved Queries List */}
-                        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm flex flex-col">
-                            <h2 className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500 p-2 rounded mb-2">
-                                Saved Queries
-                            </h2>
-                            <div className="flex-1 overflow-y-auto max-h-[300px]">
-                                {savedQueries.length === 0 ? (
-                                    <p className="text-xs text-zinc-400 italic px-2">No saved queries</p>
-                                ) : (
-                                    <ul className="space-y-2">
-                                        {savedQueries.map(sq => (
-                                            <li key={sq.id} className="group flex items-start justify-between rounded p-2 hover:bg-zinc-50 border border-transparent hover:border-zinc-100 cursor-pointer" onClick={() => loadQueryIntoEditor(sq)}>
-                                                <div className="overflow-hidden">
-                                                    <p className="text-sm font-medium text-zinc-900 truncate" title={sq.name}>{sq.name}</p>
-                                                    {sq.description && <p className="text-xs text-zinc-500 truncate" title={sq.description}>{sq.description}</p>}
-                                                </div>
-                                                <AlertDialog>
-                                                    <AlertDialogTrigger asChild>
-                                                        <button
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="opacity-0 group-hover:opacity-100 p-1 text-zinc-400 hover:text-red-600 transition-opacity"
-                                                            title="Delete"
-                                                        >
-                                                            <Trash2 className="w-3 h-3" />
-                                                        </button>
-                                                    </AlertDialogTrigger>
-                                                    <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                                                        <AlertDialogHeader>
-                                                            <AlertDialogTitle>Delete Saved Query?</AlertDialogTitle>
-                                                            <AlertDialogDescription>
-                                                                Are you sure you want to delete <strong>{sq.name}</strong>? This action cannot be undone.
-                                                            </AlertDialogDescription>
-                                                        </AlertDialogHeader>
-                                                        <AlertDialogFooter>
-                                                            <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
-                                                            <AlertDialogAction
-                                                                onClick={(e) => handleDeleteQuery(sq.id, e)}
-                                                                className="bg-red-600 hover:bg-red-700 text-white hover:text-white"
-                                                            >
-                                                                Delete
-                                                            </AlertDialogAction>
-                                                        </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-                            </div>
+                        {/* Saved Queries List (Refactored) */}
+                        <div className="flex-1 min-h-0">
+                            <SavedQueriesList
+                                savedQueries={savedQueries}
+                                onDelete={handleDeleteQuery}
+                                onLoad={loadQueryIntoEditor}
+                                onEdit={handleEditQuery}
+                            />
                         </div>
                     </aside>
 
                     {/* Main: Query Editor */}
-                    <section className="lg:col-span-3 grid gap-6 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+                    <section className="lg:col-span-3 grid gap-6 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm h-fit">
                         <div className="grid gap-4">
-                            <label className="flex flex-col gap-2 text-sm font-medium">
-                                Target Database
-                                <input
-                                    className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                                    value={databaseName}
-                                    onChange={(e) => setDatabaseName(e.target.value)}
-                                    placeholder="default"
-                                />
-                                <span className="text-xs text-zinc-500">Auto-filled from browser, or type manually.</span>
-                            </label>
+                            <div className="flex justify-between items-center">
+                                <label className="flex flex-col gap-2 text-sm font-medium flex-1 mr-4">
+                                    Target Database
+                                    <input
+                                        className="rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                                        value={databaseName}
+                                        onChange={(e) => setDatabaseName(e.target.value)}
+                                        placeholder="default"
+                                    />
+                                </label>
+                            </div>
 
                             <label className="flex flex-col gap-2 text-sm font-medium">
                                 SQL Query
                                 <textarea
-                                    className="h-40 rounded-lg border border-zinc-200 px-3 py-2 font-mono text-sm"
+                                    className="h-60 rounded-lg border border-zinc-200 px-3 py-2 font-mono text-sm"
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
                                     placeholder="SELECT * FROM users LIMIT 10;"
@@ -331,51 +299,18 @@ export default function QueryPage() {
 
                                 <div className="flex-1" />
 
-                                <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
-                                    <DialogTrigger asChild>
-                                        <Button variant="outline" className="rounded-full">
-                                            <Save className="w-4 h-4 mr-2" />
-                                            Save Query
-                                        </Button>
-                                    </DialogTrigger>
-                                    <DialogContent className="sm:max-w-[425px]">
-                                        <DialogHeader>
-                                            <DialogTitle>Save Query</DialogTitle>
-                                            <DialogDescription>
-                                                Save this query for future use.
-                                            </DialogDescription>
-                                        </DialogHeader>
-                                        <div className="grid gap-4 py-4">
-                                            <div className="grid grid-cols-4 items-center gap-4">
-                                                <Label htmlFor="name" className="text-right">
-                                                    Name
-                                                </Label>
-                                                <Input
-                                                    id="name"
-                                                    value={newQueryName}
-                                                    onChange={(e) => setNewQueryName(e.target.value)}
-                                                    className="col-span-3"
-                                                />
-                                            </div>
-                                            <div className="grid grid-cols-4 items-center gap-4">
-                                                <Label htmlFor="description" className="text-right">
-                                                    Description
-                                                </Label>
-                                                <Input
-                                                    id="description"
-                                                    value={newQueryDesc}
-                                                    onChange={(e) => setNewQueryDesc(e.target.value)}
-                                                    className="col-span-3"
-                                                />
-                                            </div>
-                                        </div>
-                                        <DialogFooter>
-                                            <Button type="submit" onClick={handleSaveQuery} disabled={isSaving}>
-                                                {isSaving ? "Saving..." : "Save changes"}
-                                            </Button>
-                                        </DialogFooter>
-                                    </DialogContent>
-                                </Dialog>
+                                <Button variant="outline" className="rounded-full" onClick={handleOpenSaveDialog}>
+                                    <Save className="w-4 h-4 mr-2" />
+                                    Save Query
+                                </Button>
+
+                                <SaveQueryDialog
+                                    open={isSaveDialogOpen}
+                                    onOpenChange={setIsSaveDialogOpen}
+                                    onSave={handleSaveQuery}
+                                    isSaving={isSaving}
+                                    editingQuery={editingQuery}
+                                />
                             </div>
 
                             {error && (
