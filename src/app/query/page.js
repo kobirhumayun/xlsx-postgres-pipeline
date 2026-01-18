@@ -56,6 +56,10 @@ export default function QueryPage() {
     const [savedQueriesLoading, setSavedQueriesLoading] = useState(false);
     const [savedQueriesError, setSavedQueriesError] = useState(null);
     const [savedQuerySearch, setSavedQuerySearch] = useState("");
+    const [lastLoadedQuery, setLastLoadedQuery] = useState("");
+    const [lastLoadedDatabaseName, setLastLoadedDatabaseName] = useState("");
+    const [isConfirmLoadOpen, setIsConfirmLoadOpen] = useState(false);
+    const [pendingLoadQuery, setPendingLoadQuery] = useState(null);
     const savedQueriesScrollRef = useRef(null);
     const refreshStateRef = useRef({ shouldRestoreScroll: false, focusId: null, scrollTop: 0 });
     const trimmedNewQueryName = newQueryName.trim();
@@ -76,6 +80,7 @@ export default function QueryPage() {
             return name.includes(normalizedSavedQuerySearch) || description.includes(normalizedSavedQuerySearch);
         })
         : savedQueries;
+    const hasUnsavedChanges = query !== lastLoadedQuery || databaseName !== lastLoadedDatabaseName;
 
     const formatTimestamp = (value) => {
         if (!value) return "";
@@ -246,6 +251,8 @@ export default function QueryPage() {
             setIsSaveDialogOpen(false);
             setNewQueryName("");
             setNewQueryDesc("");
+            setLastLoadedQuery(query);
+            setLastLoadedDatabaseName(databaseName);
             loadSavedQueries();
         } catch (err) {
             console.error(err);
@@ -313,12 +320,38 @@ export default function QueryPage() {
     };
 
     const loadQueryIntoEditor = (sq) => {
-        setQuery(sq.query);
-        if (sq.databaseName) setDatabaseName(sq.databaseName);
+        const nextQuery = sq.query || "";
+        const nextDatabaseName = sq.databaseName || "";
+        setQuery(nextQuery);
+        setDatabaseName(nextDatabaseName);
+        setLastLoadedQuery(nextQuery);
+        setLastLoadedDatabaseName(nextDatabaseName);
     };
 
     const insertTableName = (fullName) => {
         setQuery(prev => prev + ` ${fullName} `);
+    };
+
+    const handleSelectSavedQuery = (sq) => {
+        if (hasUnsavedChanges) {
+            setPendingLoadQuery(sq);
+            setIsConfirmLoadOpen(true);
+            return;
+        }
+        loadQueryIntoEditor(sq);
+    };
+
+    const handleConfirmLoad = () => {
+        if (pendingLoadQuery) {
+            loadQueryIntoEditor(pendingLoadQuery);
+        }
+        setPendingLoadQuery(null);
+        setIsConfirmLoadOpen(false);
+    };
+
+    const handleCancelLoad = () => {
+        setPendingLoadQuery(null);
+        setIsConfirmLoadOpen(false);
     };
 
     const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -442,7 +475,7 @@ export default function QueryPage() {
                                                     key={sq.id}
                                                     id={`saved-query-${sq.id}`}
                                                     className="group flex items-start justify-between rounded border border-transparent p-2 hover:border-zinc-100 hover:bg-zinc-50 cursor-pointer"
-                                                    onClick={() => loadQueryIntoEditor(sq)}
+                                                    onClick={() => handleSelectSavedQuery(sq)}
                                                 >
                                                     <div className="overflow-hidden">
                                                         <p className="text-sm font-medium text-zinc-900 truncate" title={sq.name}>
@@ -520,7 +553,14 @@ export default function QueryPage() {
                             </label>
 
                             <label className="flex flex-col gap-2 text-sm font-medium">
-                                SQL Query
+                                <div className="flex items-center justify-between gap-2">
+                                    <span>SQL Query</span>
+                                    {hasUnsavedChanges && (
+                                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                                            Unsaved changes
+                                        </span>
+                                    )}
+                                </div>
                                 <textarea
                                     className="h-40 rounded-lg border border-zinc-200 px-3 py-2 font-mono text-sm"
                                     value={query}
@@ -679,6 +719,31 @@ export default function QueryPage() {
                         </div>
                     </section>
                 </div>
+
+                <AlertDialog
+                    open={isConfirmLoadOpen}
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            handleCancelLoad();
+                            return;
+                        }
+                        setIsConfirmLoadOpen(open);
+                    }}
+                >
+                    <AlertDialogContent>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Load saved query?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                You have unsaved changes in the editor. Loading this saved query will overwrite your
+                                current query and database selection.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel onClick={handleCancelLoad}>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleConfirmLoad}>Load</AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
 
                 {results && (
                     <section className="space-y-4">
