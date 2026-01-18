@@ -77,6 +77,45 @@ export default function QueryPage() {
         })
         : savedQueries;
 
+    const formatTimestamp = (value) => {
+        if (!value) return "";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "";
+        const now = new Date();
+        const diffMs = date.getTime() - now.getTime();
+        const absMs = Math.abs(diffMs);
+        const minute = 60 * 1000;
+        const hour = 60 * minute;
+        const day = 24 * hour;
+        const week = 7 * day;
+        if (absMs < week) {
+            const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+            if (absMs < hour) {
+                const minutes = Math.round(diffMs / minute);
+                return rtf.format(minutes, "minute");
+            }
+            if (absMs < day) {
+                const hours = Math.round(diffMs / hour);
+                return rtf.format(hours, "hour");
+            }
+            const days = Math.round(diffMs / day);
+            return rtf.format(days, "day");
+        }
+        const options = { month: "short", day: "numeric" };
+        if (date.getFullYear() !== now.getFullYear()) {
+            options.year = "numeric";
+        }
+        return new Intl.DateTimeFormat("en", options).format(date);
+    };
+
+    const buildSavedQueryMeta = (sq) => {
+        const parts = [];
+        if (sq.databaseName) parts.push(sq.databaseName);
+        const updatedLabel = formatTimestamp(sq.updatedAt);
+        if (updatedLabel) parts.push(`Updated ${updatedLabel}`);
+        return parts.join(" • ");
+    };
+
     useEffect(() => {
         fetchJson("/api/structure").then(data => {
             if (data.items) setDbList(data.items);
@@ -396,62 +435,70 @@ export default function QueryPage() {
                                     <p className="text-xs text-zinc-400 italic px-2">No matches found.</p>
                                 ) : (
                                     <ul className="space-y-2">
-                                        {filteredSavedQueries.map(sq => (
-                                            <li
-                                                key={sq.id}
-                                                id={`saved-query-${sq.id}`}
-                                                className="group flex items-start justify-between rounded border border-transparent p-2 hover:border-zinc-100 hover:bg-zinc-50 cursor-pointer"
-                                                onClick={() => loadQueryIntoEditor(sq)}
-                                            >
-                                                <div className="overflow-hidden">
-                                                    <p className="text-sm font-medium text-zinc-900 truncate" title={sq.name}>
-                                                        {sq.name ? highlightMatch(sq.name, trimmedSavedQuerySearch) : null}
-                                                    </p>
-                                                    {sq.description && (
-                                                        <p className="text-xs text-zinc-500 truncate" title={sq.description}>
-                                                            {highlightMatch(sq.description, trimmedSavedQuerySearch)}
+                                        {filteredSavedQueries.map((sq) => {
+                                            const meta = buildSavedQueryMeta(sq);
+                                            return (
+                                                <li
+                                                    key={sq.id}
+                                                    id={`saved-query-${sq.id}`}
+                                                    className="group flex items-start justify-between rounded border border-transparent p-2 hover:border-zinc-100 hover:bg-zinc-50 cursor-pointer"
+                                                    onClick={() => loadQueryIntoEditor(sq)}
+                                                >
+                                                    <div className="overflow-hidden">
+                                                        <p className="text-sm font-medium text-zinc-900 truncate" title={sq.name}>
+                                                            {sq.name ? highlightMatch(sq.name, trimmedSavedQuerySearch) : null}
                                                         </p>
-                                                    )}
-                                                </div>
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button
-                                                        onClick={(e) => openEditDialog(sq, e)}
-                                                        className="p-1 text-zinc-400 hover:text-zinc-700"
-                                                        title="Edit"
-                                                    >
-                                                        <Pencil className="h-3 w-3" />
-                                                    </button>
-                                                    <AlertDialog>
-                                                        <AlertDialogTrigger asChild>
-                                                            <button
-                                                                onClick={(e) => e.stopPropagation()}
-                                                                className="p-1 text-zinc-400 hover:text-red-600"
-                                                                title="Delete"
-                                                            >
-                                                                <Trash2 className="w-3 h-3" />
-                                                            </button>
-                                                        </AlertDialogTrigger>
-                                                        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                                                            <AlertDialogHeader>
-                                                                <AlertDialogTitle>Delete Saved Query?</AlertDialogTitle>
-                                                                <AlertDialogDescription>
-                                                                    Are you sure you want to delete <strong>{sq.name}</strong>? This action cannot be undone.
-                                                                </AlertDialogDescription>
-                                                            </AlertDialogHeader>
-                                                            <AlertDialogFooter>
-                                                                <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
-                                                                <AlertDialogAction
-                                                                    onClick={(e) => handleDeleteQuery(sq.id, e)}
-                                                                    className="bg-red-600 hover:bg-red-700 text-white hover:text-white"
+                                                        {sq.description && (
+                                                            <p className="text-xs text-zinc-500 truncate" title={sq.description}>
+                                                                {highlightMatch(sq.description, trimmedSavedQuerySearch)}
+                                                            </p>
+                                                        )}
+                                                        {meta && (
+                                                            <p className="text-[11px] text-zinc-400 truncate" title={meta}>
+                                                                {meta}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button
+                                                            onClick={(e) => openEditDialog(sq, e)}
+                                                            className="p-1 text-zinc-400 hover:text-zinc-700"
+                                                            title="Edit"
+                                                        >
+                                                            <Pencil className="h-3 w-3" />
+                                                        </button>
+                                                        <AlertDialog>
+                                                            <AlertDialogTrigger asChild>
+                                                                <button
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                    className="p-1 text-zinc-400 hover:text-red-600"
+                                                                    title="Delete"
                                                                 >
-                                                                    Delete
-                                                                </AlertDialogAction>
-                                                            </AlertDialogFooter>
-                                                        </AlertDialogContent>
-                                                    </AlertDialog>
-                                                </div>
-                                            </li>
-                                        ))}
+                                                                    <Trash2 className="w-3 h-3" />
+                                                                </button>
+                                                            </AlertDialogTrigger>
+                                                            <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                                                                <AlertDialogHeader>
+                                                                    <AlertDialogTitle>Delete Saved Query?</AlertDialogTitle>
+                                                                    <AlertDialogDescription>
+                                                                        Are you sure you want to delete <strong>{sq.name}</strong>? This action cannot be undone.
+                                                                    </AlertDialogDescription>
+                                                                </AlertDialogHeader>
+                                                                <AlertDialogFooter>
+                                                                    <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
+                                                                    <AlertDialogAction
+                                                                        onClick={(e) => handleDeleteQuery(sq.id, e)}
+                                                                        className="bg-red-600 hover:bg-red-700 text-white hover:text-white"
+                                                                    >
+                                                                        Delete
+                                                                    </AlertDialogAction>
+                                                                </AlertDialogFooter>
+                                                            </AlertDialogContent>
+                                                        </AlertDialog>
+                                                    </div>
+                                                </li>
+                                            );
+                                        })}
                                     </ul>
                                 )}
                             </div>
