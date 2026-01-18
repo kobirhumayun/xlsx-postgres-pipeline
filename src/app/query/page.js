@@ -260,7 +260,7 @@ export default function QueryPage() {
                             <label className="flex flex-col gap-2 text-sm font-medium">
                                 SQL Query
                                 <textarea
-                                    className="h-60 rounded-lg border border-zinc-200 px-3 py-2 font-mono text-sm"
+                                    className="h-96 rounded-lg border border-zinc-200 px-3 py-2 font-mono text-sm"
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
                                     placeholder="SELECT * FROM users LIMIT 10;"
