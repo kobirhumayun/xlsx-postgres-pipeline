@@ -55,6 +55,7 @@ export default function QueryPage() {
     const [isUpdating, setIsUpdating] = useState(false);
     const [savedQueriesLoading, setSavedQueriesLoading] = useState(false);
     const [savedQueriesError, setSavedQueriesError] = useState(null);
+    const [savedQueriesNotice, setSavedQueriesNotice] = useState(null);
     const [savedQuerySearch, setSavedQuerySearch] = useState("");
     const [lastLoadedQuery, setLastLoadedQuery] = useState("");
     const [lastLoadedDatabaseName, setLastLoadedDatabaseName] = useState("");
@@ -62,6 +63,7 @@ export default function QueryPage() {
     const [pendingLoadQuery, setPendingLoadQuery] = useState(null);
     const savedQueriesScrollRef = useRef(null);
     const refreshStateRef = useRef({ shouldRestoreScroll: false, focusId: null, scrollTop: 0 });
+    const noticeTimeoutRef = useRef(null);
     const trimmedNewQueryName = newQueryName.trim();
     const trimmedQuery = query.trim();
     const isSaveNameMissing = !trimmedNewQueryName;
@@ -127,6 +129,12 @@ export default function QueryPage() {
         }).catch(console.error);
 
         loadSavedQueries();
+
+        return () => {
+            if (noticeTimeoutRef.current) {
+                clearTimeout(noticeTimeoutRef.current);
+            }
+        };
     }, []);
 
     const loadSavedQueries = async ({ preserveScroll = false, focusId = null } = {}) => {
@@ -262,14 +270,36 @@ export default function QueryPage() {
         }
     };
 
+    const showSavedQueriesNotice = (message, type = "success") => {
+        if (noticeTimeoutRef.current) {
+            clearTimeout(noticeTimeoutRef.current);
+        }
+        setSavedQueriesNotice({ message, type });
+        const timeoutMs = type === "success" ? 3000 : 6000;
+        noticeTimeoutRef.current = setTimeout(() => {
+            setSavedQueriesNotice(null);
+        }, timeoutMs);
+    };
+
     const handleDeleteQuery = async (id, e) => {
         if (e) e.stopPropagation(); // Stop propagation if event exists
         try {
-            await fetch("/api/saved-queries?id=" + id, { method: "DELETE" });
+            const response = await fetch("/api/saved-queries?id=" + id, { method: "DELETE" });
+            if (!response.ok) {
+                let message = "Failed to delete query";
+                try {
+                    const payload = await response.json();
+                    message = payload?.error || message;
+                } catch (parseError) {
+                    console.error(parseError);
+                }
+                throw new Error(message);
+            }
             loadSavedQueries({ preserveScroll: true });
+            showSavedQueriesNotice("Saved query deleted.");
         } catch (err) {
             console.error(err);
-            setError("Failed to delete query");
+            showSavedQueriesNotice(err.message || "Failed to delete query", "error");
         }
     };
 
@@ -455,6 +485,18 @@ export default function QueryPage() {
                                     </button>
                                 </div>
                             )}
+                            {savedQueriesNotice && (
+                                <div
+                                    className={`mb-2 rounded-lg border px-2 py-1 text-[11px] ${savedQueriesNotice.type === "error"
+                                        ? "border-red-100 bg-red-50 text-red-600"
+                                        : "border-emerald-100 bg-emerald-50 text-emerald-700"
+                                        }`}
+                                    role="status"
+                                    aria-live={savedQueriesNotice.type === "error" ? "assertive" : "polite"}
+                                >
+                                    {savedQueriesNotice.message}
+                                </div>
+                            )}
                             <div className="flex-1 overflow-y-auto max-h-[300px]" ref={savedQueriesScrollRef}>
                                 {savedQueriesLoading ? (
                                     <div className="space-y-2 px-2 py-1">
@@ -492,11 +534,12 @@ export default function QueryPage() {
                                                             </p>
                                                         )}
                                                     </div>
-                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <div className="flex items-center gap-1">
                                                         <button
                                                             onClick={(e) => openEditDialog(sq, e)}
                                                             className="p-1 text-zinc-400 hover:text-zinc-700"
                                                             title="Edit"
+                                                            aria-label={`Edit saved query ${sq.name || ""}`}
                                                         >
                                                             <Pencil className="h-3 w-3" />
                                                         </button>
@@ -506,6 +549,7 @@ export default function QueryPage() {
                                                                     onClick={(e) => e.stopPropagation()}
                                                                     className="p-1 text-zinc-400 hover:text-red-600"
                                                                     title="Delete"
+                                                                    aria-label={`Delete saved query ${sq.name || ""}`}
                                                                 >
                                                                     <Trash2 className="w-3 h-3" />
                                                                 </button>
