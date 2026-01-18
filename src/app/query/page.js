@@ -4,6 +4,16 @@ import { useEffect, useState } from "react";
 import { fetchJson } from "@/lib/api-client";
 import { SavedQueriesList } from "@/components/query/saved-queries-list";
 import { QueryEditor } from "@/components/query/query-editor";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function QueryPage() {
     const [query, setQuery] = useState("");
@@ -23,6 +33,10 @@ export default function QueryPage() {
     const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
     const [editingQuery, setEditingQuery] = useState(null); // Track which query is being edited
     const [isSaving, setIsSaving] = useState(false);
+
+    // Overwrite Confirmation State
+    const [isOverwriteDialogOpen, setIsOverwriteDialogOpen] = useState(false);
+    const [pendingQuery, setPendingQuery] = useState(null);
 
     useEffect(() => {
         fetchJson("/api/structure").then(data => {
@@ -178,13 +192,24 @@ export default function QueryPage() {
     const loadQueryIntoEditor = (sq) => {
         // Dirty State Check
         if (query.trim() && query.trim() !== sq.query.trim()) {
-            if (!window.confirm("You have unsaved changes in the editor. Are you sure you want to load this query and overwrite your current work?")) {
-                return;
-            }
+            setPendingQuery(sq);
+            setIsOverwriteDialogOpen(true);
+            return;
         }
+        performLoad(sq);
+    };
 
+    const performLoad = (sq) => {
         setQuery(sq.query);
         if (sq.databaseName) setDatabaseName(sq.databaseName);
+        setPendingQuery(null);
+        setIsOverwriteDialogOpen(false);
+    };
+
+    const handleConfirmLoad = () => {
+        if (pendingQuery) {
+            performLoad(pendingQuery);
+        }
     };
 
     const insertTableName = (fullName) => {
@@ -277,6 +302,23 @@ export default function QueryPage() {
                         editingQuery={editingQuery}
                         onSaveQuery={handleSaveQuery}
                     />
+
+                    {/* Overwrite Confirmation Alert */}
+                    <AlertDialog open={isOverwriteDialogOpen} onOpenChange={setIsOverwriteDialogOpen}>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    You have unsaved changes in the editor. Are you sure you want to load this query and overwrite your current work?
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel onClick={() => setPendingQuery(null)}>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={handleConfirmLoad}>Overwrite</AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+
                 </div>
             </main>
         </div>
