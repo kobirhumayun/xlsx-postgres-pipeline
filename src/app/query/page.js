@@ -53,6 +53,8 @@ export default function QueryPage() {
     const [editQueryText, setEditQueryText] = useState("");
     const [editDatabaseName, setEditDatabaseName] = useState("");
     const [isUpdating, setIsUpdating] = useState(false);
+    const [savedQueriesLoading, setSavedQueriesLoading] = useState(false);
+    const [savedQueriesError, setSavedQueriesError] = useState(null);
     const savedQueriesScrollRef = useRef(null);
     const refreshStateRef = useRef({ shouldRestoreScroll: false, focusId: null, scrollTop: 0 });
 
@@ -64,7 +66,7 @@ export default function QueryPage() {
         loadSavedQueries();
     }, []);
 
-    const loadSavedQueries = ({ preserveScroll = false, focusId = null } = {}) => {
+    const loadSavedQueries = async ({ preserveScroll = false, focusId = null } = {}) => {
         if (preserveScroll && savedQueriesScrollRef.current) {
             refreshStateRef.current = {
                 shouldRestoreScroll: true,
@@ -72,9 +74,17 @@ export default function QueryPage() {
                 scrollTop: savedQueriesScrollRef.current.scrollTop,
             };
         }
-        fetchJson("/api/saved-queries").then(data => {
+        setSavedQueriesLoading(true);
+        setSavedQueriesError(null);
+        try {
+            const data = await fetchJson("/api/saved-queries");
             if (Array.isArray(data)) setSavedQueries(data);
-        }).catch(console.error);
+        } catch (err) {
+            console.error(err);
+            setSavedQueriesError(err.message || "Failed to load saved queries");
+        } finally {
+            setSavedQueriesLoading(false);
+        }
     };
 
     useEffect(() => {
@@ -314,8 +324,26 @@ export default function QueryPage() {
                             <h2 className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500 p-2 rounded mb-2">
                                 Saved Queries
                             </h2>
+                            {savedQueriesError && (
+                                <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-red-100 bg-red-50 px-2 py-1 text-[11px] text-red-600">
+                                    <span className="truncate">{savedQueriesError}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => loadSavedQueries({ preserveScroll: true })}
+                                        className="shrink-0 text-[11px] font-semibold text-red-600 hover:text-red-700"
+                                    >
+                                        Retry
+                                    </button>
+                                </div>
+                            )}
                             <div className="flex-1 overflow-y-auto max-h-[300px]" ref={savedQueriesScrollRef}>
-                                {savedQueries.length === 0 ? (
+                                {savedQueriesLoading ? (
+                                    <div className="space-y-2 px-2 py-1">
+                                        <div className="h-3 w-5/6 animate-pulse rounded bg-zinc-100" />
+                                        <div className="h-3 w-2/3 animate-pulse rounded bg-zinc-100" />
+                                        <div className="h-3 w-4/5 animate-pulse rounded bg-zinc-100" />
+                                    </div>
+                                ) : savedQueries.length === 0 ? (
                                     <p className="text-xs text-zinc-400 italic px-2">No saved queries</p>
                                 ) : (
                                     <ul className="space-y-2">
