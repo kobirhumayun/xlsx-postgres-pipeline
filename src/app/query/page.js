@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchJson } from "@/lib/api-client";
-import { Trash2, Save, Play, Download } from "lucide-react";
+import { Trash2, Save, Play, Download, Pencil } from "lucide-react";
 import {
     Dialog,
     DialogContent,
@@ -46,6 +46,15 @@ export default function QueryPage() {
     const [newQueryName, setNewQueryName] = useState("");
     const [newQueryDesc, setNewQueryDesc] = useState("");
     const [isSaving, setIsSaving] = useState(false);
+    const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+    const [editQueryId, setEditQueryId] = useState(null);
+    const [editQueryName, setEditQueryName] = useState("");
+    const [editQueryDesc, setEditQueryDesc] = useState("");
+    const [editQueryText, setEditQueryText] = useState("");
+    const [editDatabaseName, setEditDatabaseName] = useState("");
+    const [isUpdating, setIsUpdating] = useState(false);
+    const savedQueriesScrollRef = useRef(null);
+    const refreshStateRef = useRef({ shouldRestoreScroll: false, focusId: null, scrollTop: 0 });
 
     useEffect(() => {
         fetchJson("/api/structure").then(data => {
@@ -55,11 +64,31 @@ export default function QueryPage() {
         loadSavedQueries();
     }, []);
 
-    const loadSavedQueries = () => {
+    const loadSavedQueries = ({ preserveScroll = false, focusId = null } = {}) => {
+        if (preserveScroll && savedQueriesScrollRef.current) {
+            refreshStateRef.current = {
+                shouldRestoreScroll: true,
+                focusId,
+                scrollTop: savedQueriesScrollRef.current.scrollTop,
+            };
+        }
         fetchJson("/api/saved-queries").then(data => {
             if (Array.isArray(data)) setSavedQueries(data);
         }).catch(console.error);
     };
+
+    useEffect(() => {
+        if (!refreshStateRef.current.shouldRestoreScroll || !savedQueriesScrollRef.current) return;
+        const { scrollTop, focusId } = refreshStateRef.current;
+        refreshStateRef.current = { shouldRestoreScroll: false, focusId: null, scrollTop: 0 };
+        savedQueriesScrollRef.current.scrollTop = scrollTop;
+        if (focusId) {
+            const item = document.getElementById(`saved-query-${focusId}`);
+            if (item) {
+                item.scrollIntoView({ block: "nearest" });
+            }
+        }
+    }, [savedQueries]);
 
     useEffect(() => {
         if (selectedDb) {
@@ -162,10 +191,56 @@ export default function QueryPage() {
         if (e) e.stopPropagation(); // Stop propagation if event exists
         try {
             await fetch("/api/saved-queries?id=" + id, { method: "DELETE" });
-            loadSavedQueries();
+            loadSavedQueries({ preserveScroll: true });
         } catch (err) {
             console.error(err);
             setError("Failed to delete query");
+        }
+    };
+
+    const openEditDialog = (sq, e) => {
+        if (e) e.stopPropagation();
+        setEditQueryId(sq.id);
+        setEditQueryName(sq.name || "");
+        setEditQueryDesc(sq.description || "");
+        setEditQueryText(sq.query || "");
+        setEditDatabaseName(sq.databaseName || "");
+        setIsEditDialogOpen(true);
+    };
+
+    const handleEditDialogOpenChange = (open) => {
+        setIsEditDialogOpen(open);
+        if (!open) {
+            setEditQueryId(null);
+            setEditQueryName("");
+            setEditQueryDesc("");
+            setEditQueryText("");
+            setEditDatabaseName("");
+        }
+    };
+
+    const handleUpdateQuery = async () => {
+        if (!editQueryId || !editQueryName.trim() || !editQueryText.trim()) return;
+        setIsUpdating(true);
+        try {
+            await fetchJson("/api/saved-queries", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    id: editQueryId,
+                    name: editQueryName,
+                    description: editQueryDesc,
+                    query: editQueryText,
+                    databaseName: editDatabaseName,
+                }),
+            });
+            setIsEditDialogOpen(false);
+            loadSavedQueries({ preserveScroll: true, focusId: editQueryId });
+        } catch (err) {
+            console.error(err);
+            setError(err.message || "Failed to update query");
+        } finally {
+            setIsUpdating(false);
         }
     };
 
@@ -239,45 +314,59 @@ export default function QueryPage() {
                             <h2 className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500 p-2 rounded mb-2">
                                 Saved Queries
                             </h2>
-                            <div className="flex-1 overflow-y-auto max-h-[300px]">
+                            <div className="flex-1 overflow-y-auto max-h-[300px]" ref={savedQueriesScrollRef}>
                                 {savedQueries.length === 0 ? (
                                     <p className="text-xs text-zinc-400 italic px-2">No saved queries</p>
                                 ) : (
                                     <ul className="space-y-2">
                                         {savedQueries.map(sq => (
-                                            <li key={sq.id} className="group flex items-start justify-between rounded p-2 hover:bg-zinc-50 border border-transparent hover:border-zinc-100 cursor-pointer" onClick={() => loadQueryIntoEditor(sq)}>
+                                            <li
+                                                key={sq.id}
+                                                id={`saved-query-${sq.id}`}
+                                                className="group flex items-start justify-between rounded border border-transparent p-2 hover:border-zinc-100 hover:bg-zinc-50 cursor-pointer"
+                                                onClick={() => loadQueryIntoEditor(sq)}
+                                            >
                                                 <div className="overflow-hidden">
                                                     <p className="text-sm font-medium text-zinc-900 truncate" title={sq.name}>{sq.name}</p>
                                                     {sq.description && <p className="text-xs text-zinc-500 truncate" title={sq.description}>{sq.description}</p>}
                                                 </div>
-                                                <AlertDialog>
-                                                    <AlertDialogTrigger asChild>
-                                                        <button
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            className="opacity-0 group-hover:opacity-100 p-1 text-zinc-400 hover:text-red-600 transition-opacity"
-                                                            title="Delete"
-                                                        >
-                                                            <Trash2 className="w-3 h-3" />
-                                                        </button>
-                                                    </AlertDialogTrigger>
-                                                    <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                                                        <AlertDialogHeader>
-                                                            <AlertDialogTitle>Delete Saved Query?</AlertDialogTitle>
-                                                            <AlertDialogDescription>
-                                                                Are you sure you want to delete <strong>{sq.name}</strong>? This action cannot be undone.
-                                                            </AlertDialogDescription>
-                                                        </AlertDialogHeader>
-                                                        <AlertDialogFooter>
-                                                            <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
-                                                            <AlertDialogAction
-                                                                onClick={(e) => handleDeleteQuery(sq.id, e)}
-                                                                className="bg-red-600 hover:bg-red-700 text-white hover:text-white"
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button
+                                                        onClick={(e) => openEditDialog(sq, e)}
+                                                        className="p-1 text-zinc-400 hover:text-zinc-700"
+                                                        title="Edit"
+                                                    >
+                                                        <Pencil className="h-3 w-3" />
+                                                    </button>
+                                                    <AlertDialog>
+                                                        <AlertDialogTrigger asChild>
+                                                            <button
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                className="p-1 text-zinc-400 hover:text-red-600"
+                                                                title="Delete"
                                                             >
-                                                                Delete
-                                                            </AlertDialogAction>
-                                                        </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
+                                                                <Trash2 className="w-3 h-3" />
+                                                            </button>
+                                                        </AlertDialogTrigger>
+                                                        <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                                                            <AlertDialogHeader>
+                                                                <AlertDialogTitle>Delete Saved Query?</AlertDialogTitle>
+                                                                <AlertDialogDescription>
+                                                                    Are you sure you want to delete <strong>{sq.name}</strong>? This action cannot be undone.
+                                                                </AlertDialogDescription>
+                                                            </AlertDialogHeader>
+                                                            <AlertDialogFooter>
+                                                                <AlertDialogCancel onClick={(e) => e.stopPropagation()}>Cancel</AlertDialogCancel>
+                                                                <AlertDialogAction
+                                                                    onClick={(e) => handleDeleteQuery(sq.id, e)}
+                                                                    className="bg-red-600 hover:bg-red-700 text-white hover:text-white"
+                                                                >
+                                                                    Delete
+                                                                </AlertDialogAction>
+                                                            </AlertDialogFooter>
+                                                        </AlertDialogContent>
+                                                    </AlertDialog>
+                                                </div>
                                             </li>
                                         ))}
                                     </ul>
@@ -372,6 +461,70 @@ export default function QueryPage() {
                                         <DialogFooter>
                                             <Button type="submit" onClick={handleSaveQuery} disabled={isSaving}>
                                                 {isSaving ? "Saving..." : "Save changes"}
+                                            </Button>
+                                        </DialogFooter>
+                                    </DialogContent>
+                                </Dialog>
+                                <Dialog open={isEditDialogOpen} onOpenChange={handleEditDialogOpenChange}>
+                                    <DialogContent className="sm:max-w-[540px]">
+                                        <DialogHeader>
+                                            <DialogTitle>Edit Saved Query</DialogTitle>
+                                            <DialogDescription>
+                                                Update the details of this saved query.
+                                            </DialogDescription>
+                                        </DialogHeader>
+                                        <div className="grid gap-4 py-4">
+                                            <div className="grid grid-cols-4 items-center gap-4">
+                                                <Label htmlFor="edit-name" className="text-right">
+                                                    Name
+                                                </Label>
+                                                <Input
+                                                    id="edit-name"
+                                                    value={editQueryName}
+                                                    onChange={(e) => setEditQueryName(e.target.value)}
+                                                    className="col-span-3"
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-4 items-center gap-4">
+                                                <Label htmlFor="edit-description" className="text-right">
+                                                    Description
+                                                </Label>
+                                                <Input
+                                                    id="edit-description"
+                                                    value={editQueryDesc}
+                                                    onChange={(e) => setEditQueryDesc(e.target.value)}
+                                                    className="col-span-3"
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-4 items-center gap-4">
+                                                <Label htmlFor="edit-database" className="text-right">
+                                                    Database
+                                                </Label>
+                                                <Input
+                                                    id="edit-database"
+                                                    value={editDatabaseName}
+                                                    onChange={(e) => setEditDatabaseName(e.target.value)}
+                                                    className="col-span-3"
+                                                />
+                                            </div>
+                                            <div className="grid grid-cols-4 items-start gap-4">
+                                                <Label htmlFor="edit-query" className="text-right pt-2">
+                                                    Query
+                                                </Label>
+                                                <textarea
+                                                    id="edit-query"
+                                                    value={editQueryText}
+                                                    onChange={(e) => setEditQueryText(e.target.value)}
+                                                    className="col-span-3 min-h-[120px] rounded-lg border border-zinc-200 px-3 py-2 font-mono text-sm"
+                                                />
+                                            </div>
+                                        </div>
+                                        <DialogFooter className="gap-2 sm:gap-0">
+                                            <Button variant="outline" onClick={() => handleEditDialogOpenChange(false)}>
+                                                Cancel
+                                            </Button>
+                                            <Button type="submit" onClick={handleUpdateQuery} disabled={isUpdating}>
+                                                {isUpdating ? "Saving..." : "Save changes"}
                                             </Button>
                                         </DialogFooter>
                                     </DialogContent>
