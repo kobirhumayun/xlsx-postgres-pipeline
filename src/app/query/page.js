@@ -123,6 +123,13 @@ export default function QueryPage() {
         return parts.join(" • ");
     };
 
+    const buildQueryPreview = (value, maxLength = 100) => {
+        if (!value) return "";
+        const normalized = value.replace(/\s+/g, " ").trim();
+        if (normalized.length <= maxLength) return normalized;
+        return `${normalized.slice(0, maxLength)}…`;
+    };
+
     useEffect(() => {
         fetchJson("/api/structure").then(data => {
             if (data.items) setDbList(data.items);
@@ -512,6 +519,7 @@ export default function QueryPage() {
                                     <ul className="space-y-2">
                                         {filteredSavedQueries.map((sq) => {
                                             const meta = buildSavedQueryMeta(sq);
+                                            const preview = buildQueryPreview(sq.query);
                                             return (
                                                 <li
                                                     key={sq.id}
@@ -523,6 +531,11 @@ export default function QueryPage() {
                                                         <p className="text-sm font-medium text-zinc-900 truncate" title={sq.name}>
                                                             {sq.name ? highlightMatch(sq.name, trimmedSavedQuerySearch) : null}
                                                         </p>
+                                                        {preview && (
+                                                            <p className="text-[11px] text-zinc-500 truncate" title={sq.query || ""}>
+                                                                {preview}
+                                                            </p>
+                                                        )}
                                                         {sq.description && (
                                                             <p className="text-xs text-zinc-500 truncate" title={sq.description}>
                                                                 {highlightMatch(sq.description, trimmedSavedQuerySearch)}
