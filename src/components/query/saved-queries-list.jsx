@@ -16,7 +16,8 @@ export function SavedQueriesList({
     savedQueries,
     onDelete,
     onLoad,
-    onEdit
+    onEdit,
+    compact = false
 }) {
     const [searchQuery, setSearchQuery] = useState("");
 
@@ -29,11 +30,13 @@ export function SavedQueriesList({
     });
 
     return (
-        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm flex flex-col h-full">
+        <div className={`flex flex-col h-full ${compact ? "p-2" : "rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"}`}>
             <div className="flex flex-col gap-2 mb-2">
-                <h2 className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500 p-2 rounded">
-                    Saved Queries
-                </h2>
+                {!compact && (
+                    <h2 className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500 p-2 rounded">
+                        Saved Queries
+                    </h2>
+                )}
                 <div className="relative">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-zinc-400" />
                     <input
