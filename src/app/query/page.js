@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { fetchJson } from "@/lib/api-client";
-import { SavedQueriesList } from "@/components/query/saved-queries-list";
+import { Sidebar } from "@/components/query/sidebar";
 import { QueryEditor } from "@/components/query/query-editor";
+import { ResultsDisplay } from "@/components/query/results-display";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -201,7 +202,13 @@ export default function QueryPage() {
 
     const performLoad = (sq) => {
         setQuery(sq.query);
-        if (sq.databaseName) setDatabaseName(sq.databaseName);
+        if (sq.databaseName) {
+            setDatabaseName(sq.databaseName);
+            // Sync Sidebar selection if DB exists, otherwise keep current or show 'select'
+            if (dbList.includes(sq.databaseName)) {
+                setSelectedDb(sq.databaseName);
+            }
+        }
         setPendingQuery(null);
         setIsOverwriteDialogOpen(false);
     };
@@ -217,110 +224,82 @@ export default function QueryPage() {
     };
 
     return (
-        <div className="min-h-screen bg-zinc-50 px-6 py-10 text-zinc-900">
-            <main className="mx-auto flex w-full max-w-7xl flex-col gap-8">
-                <header className="space-y-3">
-                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                        Advanced Tools
-                    </p>
-                    <h1 className="text-3xl font-semibold tracking-tight">
-                        Custom Queries
-                    </h1>
-                    <p className="text-base text-zinc-600">
-                        Execute raw SQL queries against your database and export results.
-                    </p>
+        <div className="flex h-screen w-full bg-zinc-50 overflow-hidden text-zinc-900 font-sans">
+            {/* Sidebar */}
+            <Sidebar
+                // Schema Browser Props
+                dbList={dbList}
+                tableList={tableList}
+                selectedDb={selectedDb}
+                setSelectedDb={setSelectedDb}
+                onInsertTable={insertTableName}
+                // Saved Queries Props
+                savedQueries={savedQueries}
+                onDeleteQuery={handleDeleteQuery}
+                onLoadQuery={loadQueryIntoEditor}
+                onEditQuery={handleEditQuery}
+            />
+
+            {/* Main Content */}
+            <main className="flex-1 flex flex-col min-w-0 h-full">
+                <header className="px-6 py-4 bg-white border-b border-zinc-200 flex items-center justify-between shrink-0">
+                    <div>
+                        <h1 className="text-xl font-semibold tracking-tight text-zinc-900">
+                            Custom Queries
+                        </h1>
+                        <p className="text-sm text-zinc-500">
+                            Execute raw SQL queries and export results
+                        </p>
+                    </div>
                 </header>
 
-                <div className="grid gap-6 lg:grid-cols-4">
+                <div className="flex-1 flex flex-col p-6 gap-6 overflow-hidden">
+                    {/* Top Pane: Query Editor */}
+                    <div className="flex-1 min-h-[300px] flex flex-col">
+                        <QueryEditor
+                            query={query}
+                            setQuery={setQuery}
+                            databaseName={databaseName}
+                            loading={loading}
+                            error={error}
+                            onRun={handleRun}
+                            isExporting={isExporting}
+                            onExport={handleExport}
+                            onOpenSaveDialog={handleOpenSaveDialog}
+                            isSaveDialogOpen={isSaveDialogOpen}
+                            setIsSaveDialogOpen={setIsSaveDialogOpen}
+                            isSaving={isSaving}
+                            editingQuery={editingQuery}
+                            onSaveQuery={handleSaveQuery}
+                        />
+                    </div>
 
-                    {/* Sidebar: Schema Browser & Saved Queries */}
-                    <aside className="lg:col-span-1 space-y-4 flex flex-col h-[calc(100vh-200px)] sticky top-6">
-                        <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm flex-shrink-0">
-                            <h2 className="bg-zinc-50 text-xs font-semibold uppercase tracking-wide text-zinc-500 p-2 rounded mb-2">
-                                Schema Browser
-                            </h2>
-                            <label className="block mb-2 text-sm font-medium">
-                                Database
-                                <select
-                                    className="w-full mt-1 rounded-lg border border-zinc-200 px-2 py-1.5 text-sm"
-                                    value={selectedDb}
-                                    onChange={(e) => setSelectedDb(e.target.value)}
-                                >
-                                    <option value="">Select...</option>
-                                    {dbList.map(db => <option key={db} value={db}>{db}</option>)}
-                                </select>
-                            </label>
-
-                            <div className="mt-4">
-                                <h3 className="text-xs font-semibold text-zinc-400 uppercase mb-2">Tables</h3>
-                                <ul className="space-y-1 max-h-[200px] overflow-y-auto">
-                                    {tableList.map(t => (
-                                        <li key={t.fullName}>
-                                            <button
-                                                onClick={() => insertTableName(t.fullName)}
-                                                className="text-left w-full text-sm text-zinc-700 hover:bg-zinc-100 px-2 py-1 rounded truncate"
-                                                title="Click to insert"
-                                            >
-                                                {t.name}
-                                            </button>
-                                        </li>
-                                    ))}
-                                    {selectedDb && tableList.length === 0 && (
-                                        <li className="text-xs text-zinc-400 italic px-2">No tables found (public)</li>
-                                    )}
-                                </ul>
-                            </div>
-                        </div>
-
-                        {/* Saved Queries List */}
-                        <div className="flex-1 min-h-0">
-                            <SavedQueriesList
-                                savedQueries={savedQueries}
-                                onDelete={handleDeleteQuery}
-                                onLoad={loadQueryIntoEditor}
-                                onEdit={handleEditQuery}
+                    {/* Bottom Pane: Results */}
+                    {results && (
+                        <div className="flex-1 min-h-[300px] border-t border-zinc-200 pt-6 flex flex-col min-w-0">
+                            <ResultsDisplay
+                                results={results}
                             />
                         </div>
-                    </aside>
-
-                    {/* Main: Query Editor */}
-                    <QueryEditor
-                        query={query}
-                        setQuery={setQuery}
-                        databaseName={databaseName}
-                        setDatabaseName={setDatabaseName}
-                        results={results}
-                        loading={loading}
-                        error={error}
-                        isExporting={isExporting}
-                        onRun={handleRun}
-                        onExport={handleExport}
-                        onOpenSaveDialog={handleOpenSaveDialog}
-                        isSaveDialogOpen={isSaveDialogOpen}
-                        setIsSaveDialogOpen={setIsSaveDialogOpen}
-                        isSaving={isSaving}
-                        editingQuery={editingQuery}
-                        onSaveQuery={handleSaveQuery}
-                    />
-
-                    {/* Overwrite Confirmation Alert */}
-                    <AlertDialog open={isOverwriteDialogOpen} onOpenChange={setIsOverwriteDialogOpen}>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    You have unsaved changes in the editor. Are you sure you want to load this query and overwrite your current work?
-                                </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel onClick={() => setPendingQuery(null)}>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={handleConfirmLoad}>Overwrite</AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-
+                    )}
                 </div>
             </main>
+
+            {/* Overwrite Confirmation Alert */}
+            <AlertDialog open={isOverwriteDialogOpen} onOpenChange={setIsOverwriteDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            You have unsaved changes in the editor. Are you sure you want to load this query and overwrite your current work?
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel onClick={() => setPendingQuery(null)}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleConfirmLoad}>Overwrite</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }
