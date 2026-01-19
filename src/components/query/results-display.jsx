@@ -1,7 +1,6 @@
-import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function ResultsDisplay({ results, isExporting, onExport }) {
+export function ResultsDisplay({ results }) {
     if (!results) return null;
 
     return (
@@ -18,17 +17,6 @@ export function ResultsDisplay({ results, isExporting, onExport }) {
                         </span>
                     )}
                 </div>
-
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onExport}
-                    disabled={isExporting}
-                    className="h-8 gap-2 border-zinc-200 hover:bg-zinc-50 text-zinc-700"
-                >
-                    <Download className="w-3.5 h-3.5" />
-                    {isExporting ? "Exporting..." : "Export to Excel"}
-                </Button>
             </div>
 
             {results.limitReached && (

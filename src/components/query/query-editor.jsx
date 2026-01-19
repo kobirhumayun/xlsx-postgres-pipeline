@@ -1,4 +1,4 @@
-import { Save, Play } from "lucide-react";
+import { Save, Play, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SaveQueryDialog } from "./save-query-dialog";
 
@@ -9,6 +9,8 @@ export function QueryEditor({
     loading,
     error,
     onRun,
+    isExporting,
+    onExport,
     onOpenSaveDialog,
     // Dialog Props
     isSaveDialogOpen,
@@ -46,6 +48,15 @@ SELECT * FROM users LIMIT 10;"
                         {databaseName ? `Connected to: ${databaseName}` : "No database selected"}
                     </div>
                     <div className="flex items-center gap-3">
+                        <Button
+                            onClick={onExport}
+                            disabled={isExporting}
+                            variant="outline"
+                            className="rounded-full px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 border-zinc-200"
+                        >
+                            <Download className="w-4 h-4 mr-2" />
+                            {isExporting ? "Exporting..." : "Export Excel"}
+                        </Button>
                         <Button
                             onClick={onRun}
                             disabled={loading || !databaseName}
