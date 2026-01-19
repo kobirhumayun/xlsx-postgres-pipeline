@@ -49,7 +49,7 @@ export function SavedQueriesList({
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto max-h-[400px]">
+            <div className="flex-1 overflow-y-auto">
                 {filteredQueries.length === 0 ? (
                     <p className="text-xs text-zinc-400 italic px-2 mt-2">
                         {searchQuery ? "No matches found" : "No saved queries"}
