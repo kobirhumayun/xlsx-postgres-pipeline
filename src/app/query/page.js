@@ -39,6 +39,10 @@ export default function QueryPage() {
     const [isOverwriteDialogOpen, setIsOverwriteDialogOpen] = useState(false);
     const [pendingQuery, setPendingQuery] = useState(null);
 
+    // Duplicate Query Alert State
+    const [isDuplicateDialogOpen, setIsDuplicateDialogOpen] = useState(false);
+    const [duplicateQueryName, setDuplicateQueryName] = useState("");
+
     useEffect(() => {
         fetchJson("/api/structure").then(data => {
             if (data.items) setDbList(data.items);
@@ -143,7 +147,8 @@ export default function QueryPage() {
         );
 
         if (duplicate) {
-            alert(`A query with the name "${name}" already exists. Please choose a different name.`);
+            setDuplicateQueryName(name);
+            setIsDuplicateDialogOpen(true);
             return;
         }
 
@@ -297,6 +302,21 @@ export default function QueryPage() {
                     <AlertDialogFooter>
                         <AlertDialogCancel onClick={() => setPendingQuery(null)}>Cancel</AlertDialogCancel>
                         <AlertDialogAction onClick={handleConfirmLoad}>Overwrite</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            {/* Duplicate Name Alert */}
+            <AlertDialog open={isDuplicateDialogOpen} onOpenChange={setIsDuplicateDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Duplicate Query Name</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            A query with the name "{duplicateQueryName}" already exists. Please choose a different name.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogAction onClick={() => setIsDuplicateDialogOpen(false)}>OK</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
