@@ -202,7 +202,13 @@ export default function QueryPage() {
 
     const performLoad = (sq) => {
         setQuery(sq.query);
-        if (sq.databaseName) setDatabaseName(sq.databaseName);
+        if (sq.databaseName) {
+            setDatabaseName(sq.databaseName);
+            // Sync Sidebar selection if DB exists, otherwise keep current or show 'select'
+            if (dbList.includes(sq.databaseName)) {
+                setSelectedDb(sq.databaseName);
+            }
+        }
         setPendingQuery(null);
         setIsOverwriteDialogOpen(false);
     };

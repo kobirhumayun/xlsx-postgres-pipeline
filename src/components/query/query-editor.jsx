@@ -50,7 +50,7 @@ SELECT * FROM users LIMIT 10;"
                     <div className="flex items-center gap-3">
                         <Button
                             onClick={onExport}
-                            disabled={isExporting}
+                            disabled={isExporting || !query.trim()}
                             variant="outline"
                             className="rounded-full px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 border-zinc-200"
                         >
@@ -59,7 +59,7 @@ SELECT * FROM users LIMIT 10;"
                         </Button>
                         <Button
                             onClick={onRun}
-                            disabled={loading || !databaseName}
+                            disabled={loading || !databaseName || !query.trim()}
                             className={`rounded-full px-6 py-2 text-sm font-semibold text-white transition-all ${loading
                                 ? "bg-zinc-400 cursor-not-allowed"
                                 : "bg-zinc-900 hover:bg-zinc-800 shadow-md hover:shadow-lg hover:-translate-y-0.5"
