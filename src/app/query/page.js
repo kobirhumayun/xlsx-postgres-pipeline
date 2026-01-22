@@ -74,7 +74,7 @@ export default function QueryPage() {
     }, [selectedDb]);
 
     const handleRun = async (e) => {
-        e.preventDefault();
+        if (e) e.preventDefault();
         if (!query.trim()) return;
 
         setLoading(true);
