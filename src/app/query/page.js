@@ -81,7 +81,11 @@ export default function QueryPage() {
             // Keep last 50 items, remove duplicates if identical query runs again (move to top)
             const filtered = prev.filter(item => item.query.trim() !== q.trim());
             const updated = [newItem, ...filtered].slice(0, 50);
-            localStorage.setItem("queryHistory", JSON.stringify(updated));
+            try {
+                localStorage.setItem("queryHistory", JSON.stringify(updated));
+            } catch (e) {
+                console.warn("Failed to save history to localStorage", e);
+            }
             return updated;
         });
     };

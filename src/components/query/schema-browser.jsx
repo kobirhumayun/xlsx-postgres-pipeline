@@ -56,7 +56,7 @@ export function SchemaBrowser({
                             <button
                                 onClick={() => onInsertTable(t.fullName)}
                                 className="text-left w-full text-sm text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 px-3 py-1.5 rounded-md truncate transition-colors"
-                                title="Click to insert into query"
+                                title={`Insert: ${t.name}`}
                             >
                                 {t.name}
                             </button>

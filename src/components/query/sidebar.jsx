@@ -87,36 +87,30 @@ export function Sidebar({
             </div>
 
             <div className={`flex-1 min-h-0 relative ${collapsed ? "hidden" : "block"}`}>
-                {activeTab === "schema" && (
-                    <div className="absolute inset-0">
-                        <SchemaBrowser
-                            dbList={dbList}
-                            tableList={tableList}
-                            selectedDb={selectedDb}
-                            setSelectedDb={setSelectedDb}
-                            onInsertTable={onInsertTable}
-                        />
-                    </div>
-                )}
-                {activeTab === "saved" && (
-                    <div className="absolute inset-0">
-                        <SavedQueriesList
-                            savedQueries={savedQueries}
-                            onDelete={onDeleteQuery}
-                            onLoad={onLoadQuery}
-                            onEdit={onEditQuery}
-                            compact={true}
-                        />
-                    </div>
-                )}
-                {activeTab === "history" && (
-                    <div className="absolute inset-0">
-                        <QueryHistoryList
-                            history={queryHistory}
-                            onLoad={onLoadHistory}
-                        />
-                    </div>
-                )}
+                <div className={`absolute inset-0 ${activeTab === "schema" ? "block" : "hidden"}`}>
+                    <SchemaBrowser
+                        dbList={dbList}
+                        tableList={tableList}
+                        selectedDb={selectedDb}
+                        setSelectedDb={setSelectedDb}
+                        onInsertTable={onInsertTable}
+                    />
+                </div>
+                <div className={`absolute inset-0 ${activeTab === "saved" ? "block" : "hidden"}`}>
+                    <SavedQueriesList
+                        savedQueries={savedQueries}
+                        onDelete={onDeleteQuery}
+                        onLoad={onLoadQuery}
+                        onEdit={onEditQuery}
+                        compact={true}
+                    />
+                </div>
+                <div className={`absolute inset-0 ${activeTab === "history" ? "block" : "hidden"}`}>
+                    <QueryHistoryList
+                        history={queryHistory}
+                        onLoad={onLoadHistory}
+                    />
+                </div>
             </div>
         </aside>
     );
