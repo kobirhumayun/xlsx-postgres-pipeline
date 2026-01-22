@@ -1,6 +1,6 @@
 import { Save, Play, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SaveQueryDialog } from "./save-query-dialog";
+import { SqlEditor } from "./sql-editor";
 
 export function QueryEditor({
     query,
@@ -34,22 +34,17 @@ export function QueryEditor({
                     </Button>
                 </div>
 
-                <textarea
-                    className="flex-1 w-full h-full resize-none p-4 font-mono text-sm outline-none bg-white"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                            e.preventDefault();
+                <div className="flex-1 overflow-hidden">
+                    <SqlEditor
+                        value={query}
+                        onChange={setQuery}
+                        onRun={(e) => {
                             if (!loading && databaseName && query.trim()) {
                                 onRun(e);
                             }
-                        }
-                    }}
-                    placeholder="-- Enter your SQL query here
-SELECT * FROM users LIMIT 10;"
-                    spellCheck={false}
-                />
+                        }}
+                    />
+                </div>
 
                 <div className="border-t border-zinc-100 p-3 bg-zinc-50 flex items-center justify-between">
                     <div className="text-xs text-zinc-500 font-mono">

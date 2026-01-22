@@ -79,7 +79,7 @@ export default function QueryPage() {
 
         setLoading(true);
         setError(null);
-        setResults(null);
+        // setResults(null); // Keep previous results for loading overlay
 
         try {
             const data = await fetchJson("/api/query/run", {
@@ -305,6 +305,7 @@ export default function QueryPage() {
                         <div className="flex-1 min-h-[300px] border-t border-zinc-200 pt-6 flex flex-col min-w-0">
                             <ResultsDisplay
                                 results={results}
+                                loading={loading}
                             />
                         </div>
                     )}
