@@ -38,6 +38,14 @@ export function QueryEditor({
                     className="flex-1 w-full h-full resize-none p-4 font-mono text-sm outline-none bg-white"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                            e.preventDefault();
+                            if (!loading && databaseName && query.trim()) {
+                                onRun(e);
+                            }
+                        }
+                    }}
                     placeholder="-- Enter your SQL query here
 SELECT * FROM users LIMIT 10;"
                     spellCheck={false}
@@ -60,6 +68,7 @@ SELECT * FROM users LIMIT 10;"
                         <Button
                             onClick={onRun}
                             disabled={loading || !databaseName || !query.trim()}
+                            title="Run Query (Ctrl + Enter)"
                             className={`rounded-full px-6 py-2 text-sm font-semibold text-white transition-all ${loading
                                 ? "bg-zinc-400 cursor-not-allowed"
                                 : "bg-zinc-900 hover:bg-zinc-800 shadow-md hover:shadow-lg hover:-translate-y-0.5"

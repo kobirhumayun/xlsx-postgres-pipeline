@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchJson } from "@/lib/api-client";
+import { toast } from "sonner";
 import { Sidebar } from "@/components/query/sidebar";
 import { QueryEditor } from "@/components/query/query-editor";
 import { ResultsDisplay } from "@/components/query/results-display";
@@ -42,6 +43,9 @@ export default function QueryPage() {
     // Duplicate Query Alert State
     const [isDuplicateDialogOpen, setIsDuplicateDialogOpen] = useState(false);
     const [duplicateQueryName, setDuplicateQueryName] = useState("");
+
+    // Sidebar State
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
     useEffect(() => {
         fetchJson("/api/structure").then(data => {
@@ -84,9 +88,13 @@ export default function QueryPage() {
                 body: JSON.stringify({ query, databaseName: databaseName || undefined }),
             });
             setResults(data);
+            if (data.message) {
+                toast.success(data.message);
+            }
         } catch (err) {
             console.error(err);
             setError(err.message || "Query failed");
+            toast.error(err.message || "Query failed");
         } finally {
             setLoading(false);
         }
@@ -96,6 +104,7 @@ export default function QueryPage() {
         if (!query.trim()) return;
         setIsExporting(true);
         try {
+            const toastId = toast.loading("Exporting query results...");
             const response = await fetch("/api/query/export", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -116,10 +125,14 @@ export default function QueryPage() {
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
+            toast.success("Export successful", { id: toastId });
 
         } catch (err) {
             console.error(err);
-            setError(err.message || "Export failed");
+            const msg = err.message || "Export failed";
+            setError(msg);
+            toast.error(msg);
+            toast.dismiss(); // dismiss loading toast if generic error caught without id
         } finally {
             setIsExporting(false);
         }
@@ -176,9 +189,12 @@ export default function QueryPage() {
             setIsSaveDialogOpen(false);
             setEditingQuery(null);
             loadSavedQueries();
+            toast.success(editingQuery ? "Query updated successfully" : "Query saved successfully");
         } catch (err) {
             console.error(err);
-            setError(err.message || "Failed to save query");
+            const msg = err.message || "Failed to save query";
+            setError(msg);
+            toast.error(msg);
         } finally {
             setIsSaving(false);
         }
@@ -189,9 +205,11 @@ export default function QueryPage() {
         try {
             await fetch("/api/saved-queries?id=" + id, { method: "DELETE" });
             loadSavedQueries();
+            toast.success("Query deleted");
         } catch (err) {
             console.error(err);
             setError("Failed to delete query");
+            toast.error("Failed to delete query");
         }
     };
 
@@ -243,6 +261,9 @@ export default function QueryPage() {
                 onDeleteQuery={handleDeleteQuery}
                 onLoadQuery={loadQueryIntoEditor}
                 onEditQuery={handleEditQuery}
+                // Sidebar Props
+                collapsed={isSidebarCollapsed}
+                setCollapsed={setIsSidebarCollapsed}
             />
 
             {/* Main Content */}
