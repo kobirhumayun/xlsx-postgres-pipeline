@@ -1,6 +1,7 @@
 import { Save, Play, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SqlEditor } from "./sql-editor";
+import { SaveQueryDialog } from "./save-query-dialog";
 
 export function QueryEditor({
     query,
