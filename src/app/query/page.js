@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchJson } from "@/lib/api-client";
+import { toast } from "sonner";
 import { Sidebar } from "@/components/query/sidebar";
 import { QueryEditor } from "@/components/query/query-editor";
 import { ResultsDisplay } from "@/components/query/results-display";
@@ -43,13 +44,61 @@ export default function QueryPage() {
     const [isDuplicateDialogOpen, setIsDuplicateDialogOpen] = useState(false);
     const [duplicateQueryName, setDuplicateQueryName] = useState("");
 
+    // Sidebar State
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+    // Query History State
+    const [queryHistory, setQueryHistory] = useState([]);
+
     useEffect(() => {
+        // Load initial data
         fetchJson("/api/structure").then(data => {
             if (data.items) setDbList(data.items);
         }).catch(console.error);
 
         loadSavedQueries();
+
+        // Load history from localStorage
+        try {
+            const stored = localStorage.getItem("queryHistory");
+            if (stored) {
+                setQueryHistory(JSON.parse(stored));
+            }
+        } catch (e) {
+            console.error("Failed to load history", e);
+        }
     }, []);
+
+    const addToHistory = (q, db) => {
+        const newItem = {
+            id: Date.now().toString(),
+            query: q,
+            databaseName: db,
+            timestamp: Date.now()
+        };
+
+        setQueryHistory(prev => {
+            // Keep last 50 items, remove duplicates if identical query runs again (move to top)
+            const filtered = prev.filter(item => item.query.trim() !== q.trim());
+            const updated = [newItem, ...filtered].slice(0, 50);
+            try {
+                localStorage.setItem("queryHistory", JSON.stringify(updated));
+            } catch (e) {
+                console.warn("Failed to save history to localStorage", e);
+            }
+            return updated;
+        });
+    };
+
+    const loadHistoryItem = (item) => {
+        // Similar to loading saved query, but simpler
+        if (query.trim() && query.trim() !== item.query.trim()) {
+            setPendingQuery(item);
+            setIsOverwriteDialogOpen(true);
+            return;
+        }
+        performLoad(item);
+    };
 
     const loadSavedQueries = () => {
         fetchJson("/api/saved-queries").then(data => {
@@ -70,12 +119,15 @@ export default function QueryPage() {
     }, [selectedDb]);
 
     const handleRun = async (e) => {
-        e.preventDefault();
+        if (e) e.preventDefault();
         if (!query.trim()) return;
 
         setLoading(true);
         setError(null);
-        setResults(null);
+        // setResults(null); // Keep previous results for loading overlay
+
+        // Save to history
+        addToHistory(query, databaseName);
 
         try {
             const data = await fetchJson("/api/query/run", {
@@ -84,9 +136,13 @@ export default function QueryPage() {
                 body: JSON.stringify({ query, databaseName: databaseName || undefined }),
             });
             setResults(data);
+            if (data.message) {
+                toast.success(data.message);
+            }
         } catch (err) {
             console.error(err);
             setError(err.message || "Query failed");
+            toast.error(err.message || "Query failed");
         } finally {
             setLoading(false);
         }
@@ -96,6 +152,7 @@ export default function QueryPage() {
         if (!query.trim()) return;
         setIsExporting(true);
         try {
+            const toastId = toast.loading("Exporting query results...");
             const response = await fetch("/api/query/export", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -116,10 +173,14 @@ export default function QueryPage() {
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
+            toast.success("Export successful", { id: toastId });
 
         } catch (err) {
             console.error(err);
-            setError(err.message || "Export failed");
+            const msg = err.message || "Export failed";
+            setError(msg);
+            toast.error(msg);
+            toast.dismiss(); // dismiss loading toast if generic error caught without id
         } finally {
             setIsExporting(false);
         }
@@ -176,9 +237,12 @@ export default function QueryPage() {
             setIsSaveDialogOpen(false);
             setEditingQuery(null);
             loadSavedQueries();
+            toast.success(editingQuery ? "Query updated successfully" : "Query saved successfully");
         } catch (err) {
             console.error(err);
-            setError(err.message || "Failed to save query");
+            const msg = err.message || "Failed to save query";
+            setError(msg);
+            toast.error(msg);
         } finally {
             setIsSaving(false);
         }
@@ -189,9 +253,11 @@ export default function QueryPage() {
         try {
             await fetch("/api/saved-queries?id=" + id, { method: "DELETE" });
             loadSavedQueries();
+            toast.success("Query deleted");
         } catch (err) {
             console.error(err);
             setError("Failed to delete query");
+            toast.error("Failed to delete query");
         }
     };
 
@@ -243,6 +309,12 @@ export default function QueryPage() {
                 onDeleteQuery={handleDeleteQuery}
                 onLoadQuery={loadQueryIntoEditor}
                 onEditQuery={handleEditQuery}
+                // History Props
+                queryHistory={queryHistory}
+                onLoadHistory={loadHistoryItem}
+                // Sidebar Props
+                collapsed={isSidebarCollapsed}
+                setCollapsed={setIsSidebarCollapsed}
             />
 
             {/* Main Content */}
@@ -284,6 +356,7 @@ export default function QueryPage() {
                         <div className="flex-1 min-h-[300px] border-t border-zinc-200 pt-6 flex flex-col min-w-0">
                             <ResultsDisplay
                                 results={results}
+                                loading={loading}
                             />
                         </div>
                     )}

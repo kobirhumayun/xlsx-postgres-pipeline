@@ -1,5 +1,6 @@
 import { Save, Play, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SqlEditor } from "./sql-editor";
 import { SaveQueryDialog } from "./save-query-dialog";
 
 export function QueryEditor({
@@ -34,14 +35,17 @@ export function QueryEditor({
                     </Button>
                 </div>
 
-                <textarea
-                    className="flex-1 w-full h-full resize-none p-4 font-mono text-sm outline-none bg-white"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="-- Enter your SQL query here
-SELECT * FROM users LIMIT 10;"
-                    spellCheck={false}
-                />
+                <div className="flex-1 overflow-hidden">
+                    <SqlEditor
+                        value={query}
+                        onChange={setQuery}
+                        onRun={(e) => {
+                            if (!loading && databaseName && query.trim()) {
+                                onRun(e);
+                            }
+                        }}
+                    />
+                </div>
 
                 <div className="border-t border-zinc-100 p-3 bg-zinc-50 flex items-center justify-between">
                     <div className="text-xs text-zinc-500 font-mono">
@@ -60,6 +64,7 @@ SELECT * FROM users LIMIT 10;"
                         <Button
                             onClick={onRun}
                             disabled={loading || !databaseName || !query.trim()}
+                            title="Run Query (Ctrl + Enter)"
                             className={`rounded-full px-6 py-2 text-sm font-semibold text-white transition-all ${loading
                                 ? "bg-zinc-400 cursor-not-allowed"
                                 : "bg-zinc-900 hover:bg-zinc-800 shadow-md hover:shadow-lg hover:-translate-y-0.5"
