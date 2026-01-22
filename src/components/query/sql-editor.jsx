@@ -18,7 +18,7 @@ export function SqlEditor({ value, onChange, onRun }) {
     return (
         <Editor
             height="100%"
-            defaultLanguage="sql"
+            defaultLanguage="pgsql"
             value={value}
             onChange={(newValue) => onChange(newValue || "")}
             onMount={handleEditorDidMount}
