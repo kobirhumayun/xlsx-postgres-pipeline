@@ -47,13 +47,54 @@ export default function QueryPage() {
     // Sidebar State
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
+    // Query History State
+    const [queryHistory, setQueryHistory] = useState([]);
+
     useEffect(() => {
+        // Load initial data
         fetchJson("/api/structure").then(data => {
             if (data.items) setDbList(data.items);
         }).catch(console.error);
 
         loadSavedQueries();
+
+        // Load history from localStorage
+        try {
+            const stored = localStorage.getItem("queryHistory");
+            if (stored) {
+                setQueryHistory(JSON.parse(stored));
+            }
+        } catch (e) {
+            console.error("Failed to load history", e);
+        }
     }, []);
+
+    const addToHistory = (q, db) => {
+        const newItem = {
+            id: Date.now().toString(),
+            query: q,
+            databaseName: db,
+            timestamp: Date.now()
+        };
+
+        setQueryHistory(prev => {
+            // Keep last 50 items, remove duplicates if identical query runs again (move to top)
+            const filtered = prev.filter(item => item.query.trim() !== q.trim());
+            const updated = [newItem, ...filtered].slice(0, 50);
+            localStorage.setItem("queryHistory", JSON.stringify(updated));
+            return updated;
+        });
+    };
+
+    const loadHistoryItem = (item) => {
+        // Similar to loading saved query, but simpler
+        if (query.trim() && query.trim() !== item.query.trim()) {
+            setPendingQuery(item);
+            setIsOverwriteDialogOpen(true);
+            return;
+        }
+        performLoad(item);
+    };
 
     const loadSavedQueries = () => {
         fetchJson("/api/saved-queries").then(data => {
@@ -80,6 +121,9 @@ export default function QueryPage() {
         setLoading(true);
         setError(null);
         // setResults(null); // Keep previous results for loading overlay
+
+        // Save to history
+        addToHistory(query, databaseName);
 
         try {
             const data = await fetchJson("/api/query/run", {
@@ -261,6 +305,9 @@ export default function QueryPage() {
                 onDeleteQuery={handleDeleteQuery}
                 onLoadQuery={loadQueryIntoEditor}
                 onEditQuery={handleEditQuery}
+                // History Props
+                queryHistory={queryHistory}
+                onLoadHistory={loadHistoryItem}
                 // Sidebar Props
                 collapsed={isSidebarCollapsed}
                 setCollapsed={setIsSidebarCollapsed}

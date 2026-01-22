@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Database, Bookmark } from "lucide-react";
+import { Database, Bookmark, Clock } from "lucide-react";
 import { SchemaBrowser } from "./schema-browser";
 import { SavedQueriesList } from "./saved-queries-list";
+import { QueryHistoryList } from "./query-history-list";
 
 export function Sidebar({
     // Schema Browser Props
@@ -16,6 +17,10 @@ export function Sidebar({
     onDeleteQuery,
     onLoadQuery,
     onEditQuery,
+
+    // History Props
+    queryHistory,
+    onLoadHistory,
 
     // Sidebar Props
     collapsed,
@@ -33,23 +38,36 @@ export function Sidebar({
                     <>
                         <button
                             onClick={() => setActiveTab("schema")}
-                            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "schema"
+                            className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs uppercase font-semibold tracking-wide border-b-2 transition-colors ${activeTab === "schema"
                                 ? "border-zinc-900 text-zinc-900"
-                                : "border-transparent text-zinc-500 hover:text-zinc-700 hover:bg-zinc-50"
+                                : "border-transparent text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50"
                                 }`}
+                            title="Schema Browser"
                         >
                             <Database className="w-4 h-4" />
-                            Schema
+                            <span className="hidden sm:inline">Schema</span>
                         </button>
                         <button
                             onClick={() => setActiveTab("saved")}
-                            className={`flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === "saved"
+                            className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs uppercase font-semibold tracking-wide border-b-2 transition-colors ${activeTab === "saved"
                                 ? "border-zinc-900 text-zinc-900"
-                                : "border-transparent text-zinc-500 hover:text-zinc-700 hover:bg-zinc-50"
+                                : "border-transparent text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50"
                                 }`}
+                            title="Saved Queries"
                         >
                             <Bookmark className="w-4 h-4" />
-                            Saved
+                            <span className="hidden sm:inline">Saved</span>
+                        </button>
+                        <button
+                            onClick={() => setActiveTab("history")}
+                            className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs uppercase font-semibold tracking-wide border-b-2 transition-colors ${activeTab === "history"
+                                ? "border-zinc-900 text-zinc-900"
+                                : "border-transparent text-zinc-400 hover:text-zinc-600 hover:bg-zinc-50"
+                                }`}
+                            title="Recent History"
+                        >
+                            <Clock className="w-4 h-4" />
+                            <span className="hidden sm:inline">History</span>
                         </button>
                     </>
                 )}
@@ -88,6 +106,14 @@ export function Sidebar({
                             onLoad={onLoadQuery}
                             onEdit={onEditQuery}
                             compact={true}
+                        />
+                    </div>
+                )}
+                {activeTab === "history" && (
+                    <div className="absolute inset-0">
+                        <QueryHistoryList
+                            history={queryHistory}
+                            onLoad={onLoadHistory}
                         />
                     </div>
                 )}
