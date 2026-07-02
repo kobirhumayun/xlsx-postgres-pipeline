@@ -63,17 +63,22 @@ The production override:
 - `deps`: installs npm dependencies and generates Prisma Client.
 - `dev`: runs `next dev`.
 - `builder`: runs `next build`.
-- `runner`: copies standalone Next.js output and backup scripts.
+- `runner`: copies standalone Next.js output, production dependencies, Prisma CLI/runtime files, and backup scripts.
 
 ## Startup Migration
 
 `entrypoint.sh` runs:
 
 ```bash
-npx prisma migrate deploy
+node ./node_modules/prisma/build/index.js migrate deploy
 ```
 
 This applies checked-in Prisma migrations before starting the app.
+
+When a container receives a `DATABASE_URL` with host `localhost` or `127.0.0.1`,
+the entrypoint rewrites that host to the Compose service hostname `db`. This
+allows the same local-development `.env` value to work with the `localdb`
+profile inside Docker.
 
 ## Environment Variables
 

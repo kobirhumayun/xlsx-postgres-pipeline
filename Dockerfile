@@ -4,9 +4,9 @@ RUN apk add --no-cache bash postgresql-client
 
 FROM base AS deps
 COPY package.json package-lock.json ./
-RUN npm ci
 COPY prisma ./prisma
 COPY prisma.config.mjs ./
+RUN npm ci
 RUN npx prisma generate
 
 FROM deps AS dev
@@ -25,6 +25,7 @@ ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 COPY prisma.config.mjs ./
 COPY --from=builder /app/backup/backup.sh /usr/local/bin/backup.sh
