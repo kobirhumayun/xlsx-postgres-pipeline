@@ -44,17 +44,24 @@ the implementation changes.
 
 Copy `.env.example` to `.env` and adjust values as needed.
 
-Important variables:
+Variables from `.env.example`:
 
-- `DATABASE_URL`
-- `QUERY_PREVIEW_LIMIT`
-- `QUERY_STATEMENT_TIMEOUT_MS`
-- `PGADMIN_DEFAULT_EMAIL`
-- `PGADMIN_DEFAULT_PASSWORD`
-- `BACKUP_SCHEDULE`
-- `RETENTION_DAYS`
-- `BACKUP_DIR`
-- `BACKUP_SERVICE_URL`
+- `DATABASE_URL`: PostgreSQL connection string used by the app, Prisma
+  migrations, backup scripts, and restore scripts. Use host `db` when running
+  inside Docker Compose. Use host `localhost` when running `npm run dev`
+  directly on your machine.
+- `PGADMIN_DEFAULT_EMAIL`: Login email for the optional pgAdmin container.
+- `PGADMIN_DEFAULT_PASSWORD`: Login password for the optional pgAdmin container.
+- `BACKUP_SCHEDULE`: Cron expression used by the backup service container.
+  The example `0 0 * * *` runs once per day at midnight.
+- `RETENTION_DAYS`: Number of days to keep generated backup files before the
+  backup script removes older files.
+- `BACKUP_DIR`: Optional backup directory override. If unset, the app/scripts
+  use `/backups` in Docker or a local `backups` directory when available.
+- `QUERY_PREVIEW_LIMIT`: Maximum number of rows returned to the Query page for
+  on-screen preview.
+- `QUERY_STATEMENT_TIMEOUT_MS`: PostgreSQL statement timeout, in milliseconds,
+  applied to query preview and export sessions.
 
 ## Docker Development
 
@@ -101,7 +108,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile locald
 The production container runs:
 
 ```bash
-npx prisma migrate deploy
+node ./node_modules/prisma/build/index.js migrate deploy
 ```
 
 before starting the app.
