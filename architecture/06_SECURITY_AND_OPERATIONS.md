@@ -54,9 +54,13 @@ Preview row count is controlled by:
 QUERY_PREVIEW_LIMIT=1000
 ```
 
-There is no documented statement timeout in the final code. If long-running
-queries are a concern, configure PostgreSQL-level limits or add route-level
-timeouts in a future code change.
+Query execution timeout is controlled by:
+
+```bash
+QUERY_STATEMENT_TIMEOUT_MS=60000
+```
+
+This timeout is applied to query preview and export sessions.
 
 ## Import Limits
 

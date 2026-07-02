@@ -54,6 +54,9 @@ The app API uses two modes:
 
 The current Compose files do not set `BACKUP_SERVICE_URL` by default.
 
+`GET /api/backup` includes a `mode` field with either `service` or
+`local-script`.
+
 ## Backup Container
 
 The `backup` service is built from `backup/Dockerfile`.

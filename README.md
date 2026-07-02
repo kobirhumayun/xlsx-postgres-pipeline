@@ -48,6 +48,7 @@ Important variables:
 
 - `DATABASE_URL`
 - `QUERY_PREVIEW_LIMIT`
+- `QUERY_STATEMENT_TIMEOUT_MS`
 - `PGADMIN_DEFAULT_EMAIL`
 - `PGADMIN_DEFAULT_PASSWORD`
 - `BACKUP_SCHEDULE`
@@ -169,6 +170,15 @@ inside the project on the host, mounted as:
 ```
 
 inside containers.
+
+The app backup API runs local backup scripts by default. If `BACKUP_SERVICE_URL`
+is configured, the app calls that HTTP backup service instead.
+
+Start the backup service container before using `docker compose exec backup ...`:
+
+```bash
+docker compose --profile backup up -d backup
+```
 
 Manual backup through the backup service container:
 

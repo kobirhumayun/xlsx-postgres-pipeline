@@ -141,6 +141,8 @@ Deletes a saved query.
 
 Lists known backup files.
 
+Response includes `mode`, either `service` or `local-script`.
+
 `POST /api/backup`
 
 Runs a backup.

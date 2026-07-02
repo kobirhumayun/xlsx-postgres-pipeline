@@ -336,6 +336,7 @@ export default function ImportPage() {
       if (error.payload?.mismatch) {
         const m = error.payload.mismatch;
         const details = [];
+        if (m.duplicateHeaders?.length) details.push(`Duplicate: ${m.duplicateHeaders.join(", ")}`);
         if (m.missingColumns?.length) details.push(`Missing: ${m.missingColumns.join(", ")}`);
         if (m.extraHeaders?.length) details.push(`Extra: ${m.extraHeaders.join(", ")}`);
         if (details.length) errorMsg += ` (${details.join("; ")})`;

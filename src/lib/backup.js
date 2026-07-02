@@ -90,6 +90,10 @@ export function shouldUseBackupService() {
   return Boolean(process.env.BACKUP_SERVICE_URL);
 }
 
+export function getBackupRuntimeMode() {
+  return shouldUseBackupService() ? "service" : "local-script";
+}
+
 export async function callBackupService(pathname, options = {}) {
   const baseUrl = process.env.BACKUP_SERVICE_URL?.replace(/\/$/, "");
   if (!baseUrl) {
