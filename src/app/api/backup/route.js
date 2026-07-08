@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   callBackupService,
+  getBackupRuntimeMode,
   listBackups,
   runBackupScript,
   shouldUseBackupService,
@@ -12,11 +13,11 @@ export async function GET() {
   try {
     if (shouldUseBackupService()) {
       const payload = await callBackupService("/backup", { method: "GET" });
-      return NextResponse.json(payload);
+      return NextResponse.json({ mode: getBackupRuntimeMode(), ...payload });
     }
 
     const { backupDir, backups } = await listBackups();
-    return NextResponse.json({ backupDir, backups });
+    return NextResponse.json({ mode: getBackupRuntimeMode(), backupDir, backups });
   } catch (error) {
     console.error("Failed to list backups:", error);
     return NextResponse.json(
@@ -33,13 +34,14 @@ export async function POST() {
   try {
     if (shouldUseBackupService()) {
       const payload = await callBackupService("/backup", { method: "POST" });
-      return NextResponse.json(payload);
+      return NextResponse.json({ mode: getBackupRuntimeMode(), ...payload });
     }
 
     const result = await runBackupScript();
     const { backups } = await listBackups();
     return NextResponse.json({
       success: true,
+      mode: getBackupRuntimeMode(),
       output: result.stdout,
       errorOutput: result.stderr,
       backups,

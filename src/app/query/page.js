@@ -17,6 +17,8 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+const destructiveQueryPattern = /^\s*(?:DROP|ALTER|TRUNCATE|DELETE|UPDATE|INSERT|CREATE)\b/i;
+
 export default function QueryPage() {
     const [query, setQuery] = useState("");
     const [databaseName, setDatabaseName] = useState("");
@@ -43,6 +45,7 @@ export default function QueryPage() {
     // Duplicate Query Alert State
     const [isDuplicateDialogOpen, setIsDuplicateDialogOpen] = useState(false);
     const [duplicateQueryName, setDuplicateQueryName] = useState("");
+    const [isDestructiveQueryDialogOpen, setIsDestructiveQueryDialogOpen] = useState(false);
 
     // Sidebar State
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -118,15 +121,12 @@ export default function QueryPage() {
         }
     }, [selectedDb]);
 
-    const handleRun = async (e) => {
-        if (e) e.preventDefault();
+    const executeQuery = async () => {
         if (!query.trim()) return;
 
         setLoading(true);
         setError(null);
-        // setResults(null); // Keep previous results for loading overlay
 
-        // Save to history
         addToHistory(query, databaseName);
 
         try {
@@ -146,6 +146,18 @@ export default function QueryPage() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleRun = async (e) => {
+        if (e) e.preventDefault();
+        if (!query.trim()) return;
+
+        if (destructiveQueryPattern.test(query)) {
+            setIsDestructiveQueryDialogOpen(true);
+            return;
+        }
+
+        await executeQuery();
     };
 
     const handleExport = async () => {
@@ -385,11 +397,33 @@ export default function QueryPage() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Duplicate Query Name</AlertDialogTitle>
                         <AlertDialogDescription>
-                            A query with the name "{duplicateQueryName}" already exists. Please choose a different name.
+                            A query with the name &quot;{duplicateQueryName}&quot; already exists. Please choose a different name.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogAction onClick={() => setIsDuplicateDialogOpen(false)}>OK</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+            <AlertDialog open={isDestructiveQueryDialogOpen} onOpenChange={setIsDestructiveQueryDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Run write query?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This query can change database objects or data. Confirm that you want to run it against {databaseName || "the selected database"}.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={() => {
+                                setIsDestructiveQueryDialogOpen(false);
+                                executeQuery();
+                            }}
+                        >
+                            Run Query
+                        </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>

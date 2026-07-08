@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { getDbPool, registerNumericParser } from "@/lib/db";
+import {
+    applyQueryTimeout,
+    getDbPool,
+    registerNumericParser,
+    resetQueryTimeout,
+} from "@/lib/db";
 import ExcelJS from "exceljs";
 import Cursor from "pg-cursor";
 
@@ -26,6 +31,7 @@ export async function POST(request) {
         registerNumericParser();
         pool = getDbPool(databaseName);
         client = await pool.connect();
+        await applyQueryTimeout(client);
 
         const stream = new ReadableStream({
             async start(controller) {
@@ -98,9 +104,10 @@ export async function POST(request) {
                         });
                     }
                     // Release DB resources when stream is done or errors
-                    if (client) client.release();
-                    if (pool && pool !== getDbPool()) {
-                        // Pool is now cached, do not end
+                    if (client) {
+                        await resetQueryTimeout(client);
+                        client.release();
+                        client = null;
                     }
                 }
             }
@@ -115,7 +122,10 @@ export async function POST(request) {
 
     } catch (error) {
         console.error("Export Error", error);
-        if (client) client.release();
+        if (client) {
+            await resetQueryTimeout(client);
+            client.release();
+        }
         return Response.json(
             { error: "Export failed", details: error.message },
             { status: 500 }

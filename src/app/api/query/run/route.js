@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { getDbPool } from "@/lib/db";
+import {
+    applyQueryTimeout,
+    getDbPool,
+    getQueryPreviewLimit,
+    resetQueryTimeout,
+} from "@/lib/db";
 import Cursor from "pg-cursor";
 
 const querySchema = z.object({
@@ -26,6 +31,7 @@ export async function POST(request) {
 
         pool = getDbPool(databaseName);
         client = await pool.connect();
+        await applyQueryTimeout(client);
 
         // Check if query is likely a SELECT or WITH (CTE) to use cursor
         // Regex handles leading whitespace and case-insensitivity
@@ -47,7 +53,7 @@ export async function POST(request) {
                 });
             };
 
-            const BATCH_LIMIT = parseInt(process.env.QUERY_PREVIEW_LIMIT || "1000");
+            const BATCH_LIMIT = getQueryPreviewLimit();
             const fetchedRows = await readRows(BATCH_LIMIT + 1);
 
             const limitReached = fetchedRows.length > BATCH_LIMIT;
@@ -90,7 +96,6 @@ export async function POST(request) {
 
             const result = await client.query(query);
 
-            const isDml = ["INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER"].includes(result.command);
             let message = "Query executed successfully.";
 
             if (result.rowCount !== null && result.rowCount !== undefined) {
@@ -120,9 +125,9 @@ export async function POST(request) {
         if (cursorObj) {
             cursorObj.close(() => { });
         }
-        if (client) client.release();
-        if (pool && pool !== getDbPool()) {
-            // Pool is now cached, do not end
+        if (client) {
+            await resetQueryTimeout(client);
+            client.release();
         }
     }
 }

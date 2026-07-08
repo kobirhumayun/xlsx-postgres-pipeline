@@ -1,10 +1,13 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import Editor from "@monaco-editor/react";
 
 export function SqlEditor({ value, onChange, onRun }) {
     const editorRef = useRef(null);
     const onRunRef = useRef(onRun);
-    onRunRef.current = onRun;
+
+    useEffect(() => {
+        onRunRef.current = onRun;
+    }, [onRun]);
 
     const handleEditorDidMount = (editor, monaco) => {
         editorRef.current = editor;

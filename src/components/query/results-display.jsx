@@ -5,14 +5,6 @@ import { useState, useMemo } from "react";
 export function ResultsDisplay({ results, loading }) {
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
-    // Reset sorting when new results arrive (checking by command or rowCount usually implies new query)
-    // However, simplest is to just let the user re-sort if they want, or use a useEffect to reset if results object reference changes
-    useMemo(() => {
-        // We can't easily hook into "results changed" here without effect, 
-        // but typically sorting persists on same dataset. 
-        // If results content changes completely, we might want to reset, but for now we'll keep it simple.
-    }, [results]);
-
     const sortedRows = useMemo(() => {
         if (!results || !results.rows) return [];
         let sortableRows = [...results.rows];

@@ -1,139 +1,214 @@
 # XLSX Postgres Pipeline
 
-A Next.js application for importing Excel files, mapping them to datasets, and normalizing data into PostgreSQL.
+A Next.js application for importing Excel files into PostgreSQL tables, running
+raw SQL queries, exporting query results to Excel, and managing database
+backups.
+
+This project is designed as a trusted single-user/operator tool. It does not
+include built-in authentication.
 
 ## Features
-- **Prisma ORM**: Single DB access layer.
-- **Flexible Import**: Import Excel data into *any* PostgreSQL table across databases.
-- **Custom Queries**: Execute raw SQL and export results to Excel.
-- **Schema Discovery**: Explore databases and tables within the application.
-- **Dockerized**: specific setups for Development and Production.
 
-## Getting Started
+- Flexible Excel import into selected PostgreSQL tables.
+- Simple table creation from Excel headers.
+- Database, table, and column discovery.
+- Raw SQL editor with preview results.
+- Excel export for query results.
+- Saved SQL queries.
+- Manual backup and restore UI.
+- Dockerized development and production flows.
 
-### Prerequisites
-- Docker & Docker Compose
-- Node.js (optional, for local development outside Docker)
+## Documentation
 
-### Running with Docker
+Codex project instructions start in [AGENTS.md](./AGENTS.md).
 
-This project uses Docker Compose overrides to manage environments. Explicitly verify the configuration using `-f` flags.
+Architecture and handoff docs live in [architecture](./architecture).
 
-#### 1. Development Environment
-(Hot reloading enabled, unoptimized build)
+Documentation read order:
 
-**Scenario A: With Local Database (Recommended)**
-Starts the App and a local PostgreSQL container.
+- [Codex Project Instructions](./AGENTS.md)
+- [Architecture Index](./architecture/README.md)
+- [Project Overview](./architecture/00_PROJECT_OVERVIEW.md)
+- [Codex Handoff](./architecture/09_CODEX_HANDOFF.md)
+
+The codebase is the source of truth. Documentation should be updated whenever
+the implementation changes.
+
+## Prerequisites
+
+- Docker and Docker Compose
+- Node.js 20+ for local development outside Docker
+- PostgreSQL access through `DATABASE_URL`
+
+## Environment
+
+Copy `.env.example` to `.env` and adjust values as needed.
+
+Variables from `.env.example`:
+
+- `DATABASE_URL`: PostgreSQL connection string used by the app, Prisma
+  migrations, backup scripts, and restore scripts. Use host `db` when running
+  inside Docker Compose. Use host `localhost` when running `npm run dev`
+  directly on your machine.
+- `PGADMIN_DEFAULT_EMAIL`: Login email for the optional pgAdmin container.
+- `PGADMIN_DEFAULT_PASSWORD`: Login password for the optional pgAdmin container.
+- `BACKUP_SCHEDULE`: Cron expression used by the backup service container.
+  The example `0 0 * * *` runs once per day at midnight.
+- `RETENTION_DAYS`: Number of days to keep generated backup files before the
+  backup script removes older files.
+- `BACKUP_DIR`: Optional backup directory override. If unset, the app/scripts
+  use `/backups` in Docker or a local `backups` directory when available.
+- `QUERY_PREVIEW_LIMIT`: Maximum number of rows returned to the Query page for
+  on-screen preview.
+- `QUERY_STATEMENT_TIMEOUT_MS`: PostgreSQL statement timeout, in milliseconds,
+  applied to query preview and export sessions.
+
+## Docker Development
+
+Run the app with the local PostgreSQL container:
+
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile localdb up --build
 ```
 
-**Scenario B: With External Database**
-Starts the App only (connects to DB defined in `.env`).
-```bash
-# Ensure DATABASE_URL in .env points to your external DB
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+The app is available at:
+
+```text
+http://localhost:3000
 ```
 
-#### 2. Production Environment
-(Optimized build, no hot reloading)
+Optional pgAdmin:
 
-**Scenario A: With Local Database**
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile localdb up --build -d
-```
-
-**Scenario B: With External Database**
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
-```
-
-#### 3. Optional Tools (pgAdmin)
-To add pgAdmin to any of the above commands, add the `--profile tools` flag.
-
-**Example (Dev + Local DB + pgAdmin):**
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile localdb --profile tools up --build
 ```
 
-- **pgAdmin URL**: [http://localhost:5050](http://localhost:5050)
-- **Login**: `admin@admin.com` / `admin` (or checked in `.env`)
+pgAdmin is available at:
 
-### Database Initialization
-
-The project is configured to **automatically initialize the database schema** every time the container starts.
-- It runs `npx prisma db push` before starting the application.
-- This ensures tables exist even after a fresh Docker build or volume reset.
-
-## Development
-
-If you want to run `next dev` locally (outside Docker) while using the Docker database:
-
-1.  Start only the database:
-    ```bash
-    docker compose --profile localdb up db -d
-    ```
-2.  Install dependencies:
-    ```bash
-    npm install
-    ```
-3.  Generate Prisma client:
-    ```bash
-    npx prisma generate
-    ```
-4.  Run the app:
-    ```bash
-    npm run dev
-    ```
-
-## Architecture
-
-- **Database**: PostgreSQL 16
-- **ORM**: Prisma
-- **Framework**: Next.js 16 (Turbopack)
-- **Styling**: Tailwind CSS / Shadcn UI
-
-## Backup & Recovery
-
-A dedicated containerized service (`backup` profile) handles automated and manual operations.
-
-### Automated Backups
-- Runs automatically when the `backup` profile is enabled.
-- **Schedule**: Daily at midnight (00:00).
-- **Retention**: Keeps the last 7 days of backups.
-- **Location**: HOST `./backups` maps to CONTAINER `/backups`.
-
-### Commands
-
-**Start with Backup Service:**
-```bash
-docker compose --profile localdb --profile backup up -d
+```text
+http://localhost:5050
 ```
 
-**Manual Instant Backup:**
+Use the credentials from `.env`.
+
+## Docker Production
+
+Production with a remote PostgreSQL database:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+```
+
+Production with the optional local PostgreSQL container:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile localdb up --build -d
+```
+
+The production container runs:
+
+```bash
+node ./node_modules/prisma/build/index.js migrate deploy
+```
+
+before starting the app.
+
+## Local Development Outside Docker
+
+Start only the local database:
+
+```bash
+docker compose -f docker-compose.yml --profile localdb up db -d
+```
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Generate Prisma Client:
+
+```bash
+npx prisma generate
+```
+
+Run the development server:
+
+```bash
+npm run dev
+```
+
+## Validation
+
+Lint:
+
+```bash
+npm run lint
+```
+
+Build:
+
+```bash
+npm run build
+```
+
+If building from a clean local install, run Prisma generation first:
+
+```bash
+npx prisma generate
+```
+
+## Backup And Restore
+
+The app can list backups, run manual backups, and restore selected backups from
+the `/backup` page.
+
+Backup files are stored in:
+
+```text
+./backups
+```
+
+inside the project on the host, mounted as:
+
+```text
+/backups
+```
+
+inside containers.
+
+The app backup API runs local backup scripts by default. If `BACKUP_SERVICE_URL`
+is configured, the app calls that HTTP backup service instead.
+
+Start the backup service container before using `docker compose exec backup ...`:
+
+```bash
+docker compose --profile backup up -d backup
+```
+
+Manual backup through the backup service container:
+
 ```bash
 docker compose --profile backup exec backup /usr/local/bin/backup.sh
 ```
 
-**Restore from File:**
+Restore through the backup service container:
+
 ```bash
-# 1. Place .sql.gz file in ./backups on host
-# 2. Run restore script with internal path
-docker compose --profile backup exec backup /usr/local/bin/restore.sh /backups/your_backup_file.sql.gz
+docker compose --profile backup exec backup /usr/local/bin/restore.sh /backups/backup_YYYYMMDD_HHMMSS.sql.gz
 ```
 
-> **Note for Windows (Git Bash) Users:**
-> If you encounter `OCI runtime exec failed` errors due to path conversion, use double slashes `//` for absolute paths:
-> ```bash
-> docker compose --profile backup exec backup //usr/local/bin/backup.sh
-> docker compose --profile backup exec backup //usr/local/bin/restore.sh //backups/filename.sql.gz
-> ```
+On Windows Git Bash, use double slashes if path conversion causes Docker exec
+errors:
 
-### Configuration
-Adjust `docker-compose.yml` environment variables:
-- `DATABASE_URL`: Connection string (defaults to project's .env value).
-- `BACKUP_SCHEDULE`: Cron expression (e.g. `0 2 * * *` for 2AM).
-- `RETENTION_DAYS`: Days to keep old files.
-- `BACKUP_DIR`: Internal path to store backups (default: `/backups`).
+```bash
+docker compose --profile backup exec backup //usr/local/bin/backup.sh
+docker compose --profile backup exec backup //usr/local/bin/restore.sh //backups/backup_YYYYMMDD_HHMMSS.sql.gz
+```
 
+## Security Notice
 
+Raw SQL execution and restore operations are intentional features. Keep the app
+behind trusted network or access controls. Use a least-privilege PostgreSQL user
+when destructive SQL should be restricted.

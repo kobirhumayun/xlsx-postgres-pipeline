@@ -126,7 +126,7 @@ export async function POST(request) {
         });
 
 
-        let headers = [];
+        let headerColumns = [];
         // transactionStarted is now defined in outer scope
 
         // Batch configuration
@@ -140,9 +140,9 @@ export async function POST(request) {
 
         const flushBatch = async () => {
             if (batchData.length === 0) return;
-            if (!headers.length) return;
+            if (!headerColumns.length) return;
 
-            const numCols = headers.length;
+            const numCols = headerColumns.length;
             // Construct info for batch
             const batchValues = batchData.flatMap(d => d.values);
 
@@ -156,7 +156,7 @@ export async function POST(request) {
                 valuesClause.push(`(${rowParams.join(',')})`);
             }
 
-            const safeColumns = headers.map(quoteId).join(", ");
+            const safeColumns = headerColumns.map(({ name }) => quoteId(name)).join(", ");
             const finalQuery = `INSERT INTO ${safeTableName} (${safeColumns}) VALUES ${valuesClause.join(',')}`;
 
             try {
@@ -170,7 +170,7 @@ export async function POST(request) {
                 console.warn("Batch failed, retrying row-by-row to identify errors:", err.message);
 
                 // Fallback: Row-by-Row to find which one failed
-                const singleInsertQuery = `INSERT INTO ${safeTableName} (${safeColumns}) VALUES (${headers.map((_, i) => `$${i + 1}`).join(',')})`;
+                const singleInsertQuery = `INSERT INTO ${safeTableName} (${safeColumns}) VALUES (${headerColumns.map((_, i) => `$${i + 1}`).join(',')})`;
 
                 for (const item of batchData) {
                     try {
@@ -222,24 +222,26 @@ export async function POST(request) {
                 };
 
                 const rawValues = Array.isArray(row.values) ? row.values : [];
-                if (rawValues.length > 1) {
-                    headers = rawValues.slice(1).map(v => normalizeCell(v).trim()).filter(Boolean);
-                } else {
-                    if (row.cellCount > 0) {
-                        const extracted = [];
-                        for (let i = 1; i <= row.cellCount; i++) {
-                            extracted.push(normalizeCell(row.getCell(i).value).trim());
-                        }
-                        headers = extracted.filter(Boolean);
+                const extracted = [];
+                const maxCellIndex = Math.max(row.cellCount, rawValues.length - 1);
+                for (let i = 1; i <= maxCellIndex; i++) {
+                    const rawCellValue =
+                        rawValues.length > i ? rawValues[i] : row.getCell(i).value;
+                    const name = normalizeCell(rawCellValue).trim();
+                    if (name) {
+                        extracted.push({ index: i, name });
                     }
                 }
+                headerColumns = extracted;
 
-                if (!headers.length) {
+                if (!headerColumns.length) {
                     throw new Error("Header row is empty or invalid.");
                 }
 
+                const headers = headerColumns.map(({ name }) => name);
                 const expectedHeaders = tableColumns.map(column => column.name);
                 const headerSet = new Set(headers);
+                const duplicateHeaders = headers.filter((name, index) => headers.indexOf(name) !== index);
 
                 // Allow missing columns if they have a default value or are nullable
                 const missingColumns = tableColumns.filter(column => {
@@ -256,8 +258,9 @@ export async function POST(request) {
                 // Let's keep blocking on extra headers for safety, but fix the missing ID.
                 const extraHeaders = headers.filter(name => !tableColumns.some(c => c.name === name));
 
-                if (missingColumns.length || extraHeaders.length) {
+                if (duplicateHeaders.length || missingColumns.length || extraHeaders.length) {
                     const mismatchDetails = {
+                        duplicateHeaders: Array.from(new Set(duplicateHeaders)),
                         missingColumns,
                         extraHeaders,
                         expectedColumns: expectedHeaders,
@@ -279,14 +282,13 @@ export async function POST(request) {
                 continue;
             }
 
-            if (!headers.length) continue;
+            if (!headerColumns.length) continue;
 
             totalRows++;
 
             const rowValues = [];
-            for (let i = 0; i < headers.length; i++) {
-                const headerName = headers[i];
-                const cell = row.getCell(i + 1);
+            for (const { index, name: headerName } of headerColumns) {
+                const cell = row.getCell(index);
                 let val = cell.value;
                 const targetType = columnTypeMap.get(headerName) || 'text';
 
