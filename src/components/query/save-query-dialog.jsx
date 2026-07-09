@@ -59,8 +59,8 @@ function SaveQueryDialogContent({ isEdit, isSaving, initialValues, onSave }) {
                 <DialogTitle>{isEdit ? "Edit Saved Query" : "Save Query"}</DialogTitle>
                 <DialogDescription>
                     {isEdit
-                        ? "Update the details and content of your saved query."
-                        : "Save this query for future use."}
+                        ? "Update the SQL and metadata exported with this query."
+                        : "Save this query with metadata that travels with exported SQL files."}
                 </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -85,7 +85,7 @@ function SaveQueryDialogContent({ isEdit, isSaving, initialValues, onSave }) {
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         className="col-span-3"
-                        placeholder="Optional description"
+                        placeholder="Purpose, assumptions, or expected output"
                     />
                 </div>
 
@@ -110,7 +110,7 @@ function SaveQueryDialogContent({ isEdit, isSaving, initialValues, onSave }) {
                         value={databaseName}
                         onChange={(e) => setDatabaseName(e.target.value)}
                         className="col-span-3"
-                        placeholder="default"
+                        placeholder="Database name used by this query"
                     />
                 </div>
 

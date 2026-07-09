@@ -19,6 +19,8 @@ export function Sidebar({
     onEditQuery,
     onImportSavedQueries,
     onExportSavedQueries,
+    onExportSelectedSavedQueries,
+    onExportSingleSavedQuery,
     isImportingSavedQueries,
     isExportingSavedQueries,
 
@@ -108,6 +110,8 @@ export function Sidebar({
                         onEdit={onEditQuery}
                         onImportFiles={onImportSavedQueries}
                         onExportAll={onExportSavedQueries}
+                        onExportSelected={onExportSelectedSavedQueries}
+                        onExportQuery={onExportSingleSavedQuery}
                         isImporting={isImportingSavedQueries}
                         isExporting={isExportingSavedQueries}
                         compact={true}

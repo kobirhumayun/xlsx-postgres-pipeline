@@ -43,8 +43,8 @@ Purpose:
 - Run queries and preview results.
 - Export query results.
 - Save, edit, load, and delete saved queries.
-- Export saved queries as `.sql` files in a `.zip`.
-- Import multiple saved queries from `.sql` files.
+- Export all, selected, or individual saved queries as `.sql` files in a `.zip`.
+- Import multiple saved queries from `.sql` files by picker or drag and drop.
 - Keep recent query history in browser local storage.
 
 Primary API routes:
@@ -54,6 +54,7 @@ Primary API routes:
 - `POST /api/query/export`
 - `/api/saved-queries`
 - `POST /api/saved-queries/files/export`
+- `POST /api/saved-queries/files/preview`
 - `POST /api/saved-queries/files/import`
 
 Important UI behavior:
@@ -62,8 +63,10 @@ Important UI behavior:
 - Export only requires query text in the current UI, but the API still receives
   the selected database when present.
 - Query history is local to the browser.
-- Saved-query file import updates records by query name and does not execute
-  imported SQL.
+- Saved-query file import previews per-file actions before applying changes.
+- Saved-query file import supports updating matching names, creating only,
+  importing copies, and replacing all saved queries.
+- Imported SQL is saved only and is not executed.
 
 ## Backup
 

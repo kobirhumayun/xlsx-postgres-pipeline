@@ -1,17 +1,16 @@
 import { prisma } from "@/lib/db";
-import { parseSavedQuerySqlFile } from "@/lib/saved-query-files";
+import {
+    planSavedQueryImport,
+    SAVED_QUERY_IMPORT_MODES,
+} from "@/lib/saved-query-import";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const IMPORT_MODES = new Set(["create", "upsert"]);
-
 export async function POST(request) {
     try {
         const formData = await request.formData();
-        const mode = IMPORT_MODES.has(formData.get("mode"))
-            ? formData.get("mode")
-            : "upsert";
+        const mode = formData.get("mode");
         const files = formData
             .getAll("files")
             .filter((file) => file && typeof file.text === "function");
@@ -24,85 +23,48 @@ export async function POST(request) {
         }
 
         const existingQueries = await prisma.savedQuery.findMany();
-        const existingByName = new Map(
-            existingQueries.map((savedQuery) => [
-                savedQuery.name.trim().toLowerCase(),
-                savedQuery,
-            ])
-        );
+        const plan = await planSavedQueryImport(files, existingQueries, mode);
 
-        const summary = {
-            created: 0,
-            updated: 0,
-            skipped: 0,
-            errors: [],
-            imported: [],
-        };
+        if (
+            plan.mode === SAVED_QUERY_IMPORT_MODES.replace &&
+            plan.summary.errors > 0
+        ) {
+            return NextResponse.json(
+                {
+                    error: "Fix import errors before replacing saved queries.",
+                    ...toResponseSummary(plan),
+                },
+                { status: 400 }
+            );
+        }
 
-        for (const file of files) {
-            const filename = file.name || "query.sql";
+        if (plan.mode === SAVED_QUERY_IMPORT_MODES.replace) {
+            await prisma.$transaction([
+                prisma.savedQuery.deleteMany(),
+                ...plan.operations
+                    .filter((operation) => operation.action === "created")
+                    .map((operation) => prisma.savedQuery.create({
+                        data: operation.data,
+                    })),
+            ]);
 
-            if (!filename.toLowerCase().endsWith(".sql")) {
-                summary.skipped += 1;
-                summary.errors.push({
-                    filename,
-                    error: "Only .sql files can be imported.",
-                });
-                continue;
+            return NextResponse.json(toResponseSummary(plan));
+        }
+
+        for (const operation of plan.operations) {
+            if (operation.action === "created") {
+                await prisma.savedQuery.create({ data: operation.data });
             }
 
-            try {
-                const parsed = parseSavedQuerySqlFile(await file.text(), filename);
-                const key = parsed.name.trim().toLowerCase();
-                const existing = existingByName.get(key);
-
-                if (existing && mode === "create") {
-                    summary.skipped += 1;
-                    summary.imported.push({
-                        filename,
-                        name: parsed.name,
-                        action: "skipped",
-                    });
-                    continue;
-                }
-
-                if (existing) {
-                    const updated = await prisma.savedQuery.update({
-                        where: { id: existing.id },
-                        data: parsed,
-                    });
-
-                    existingByName.set(key, updated);
-                    summary.updated += 1;
-                    summary.imported.push({
-                        filename,
-                        name: updated.name,
-                        action: "updated",
-                    });
-                    continue;
-                }
-
-                const created = await prisma.savedQuery.create({
-                    data: parsed,
-                });
-
-                existingByName.set(key, created);
-                summary.created += 1;
-                summary.imported.push({
-                    filename,
-                    name: created.name,
-                    action: "created",
-                });
-            } catch (error) {
-                summary.skipped += 1;
-                summary.errors.push({
-                    filename,
-                    error: error.message || "Failed to import file.",
+            if (operation.action === "updated") {
+                await prisma.savedQuery.update({
+                    where: { id: operation.existingId },
+                    data: operation.data,
                 });
             }
         }
 
-        return NextResponse.json(summary);
+        return NextResponse.json(toResponseSummary(plan));
     } catch (error) {
         console.error("Failed to import saved queries:", error);
         return NextResponse.json(
@@ -110,4 +72,20 @@ export async function POST(request) {
             { status: 500 }
         );
     }
+}
+
+function toResponseSummary(plan) {
+    return {
+        mode: plan.mode,
+        willReplaceExisting: plan.willReplaceExisting,
+        replaceCount: plan.replaceCount,
+        ...plan.summary,
+        imported: plan.operations.map((operation) => ({
+            filename: operation.filename,
+            name: operation.name,
+            originalName: operation.originalName,
+            action: operation.action,
+            error: operation.error,
+        })),
+    };
 }

@@ -40,8 +40,9 @@ format stores metadata in leading SQL comments:
 - `-- xpp:description:`
 
 The remaining file body is stored as the saved query SQL. Importing these files
-creates or updates `SavedQuery` records by query name and does not execute the
-SQL.
+creates, updates, copies, or replaces `SavedQuery` records depending on the
+selected import mode and does not execute the SQL. Exported zip files include
+`queries/README.md` with the file-format summary.
 
 ## Dynamic Database Connections
 

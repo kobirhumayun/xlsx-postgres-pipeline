@@ -25,11 +25,18 @@ export async function POST(request) {
         }
 
         const usedNames = new Set();
-        const files = savedQueries.map((savedQuery) => ({
-            name: `queries/${savedQueryFileName(savedQuery, usedNames)}`,
-            data: toSavedQuerySqlFile(savedQuery),
-            date: savedQuery.updatedAt,
-        }));
+        const files = [
+            {
+                name: "queries/README.md",
+                data: savedQueriesReadme(),
+                date: new Date(),
+            },
+            ...savedQueries.map((savedQuery) => ({
+                name: `queries/${savedQueryFileName(savedQuery, usedNames)}`,
+                data: toSavedQuerySqlFile(savedQuery),
+                date: savedQuery.updatedAt,
+            })),
+        ];
 
         const zip = createZip(files);
         const filename = `saved-queries-${timestampForFilename(new Date())}.zip`;
@@ -48,6 +55,24 @@ export async function POST(request) {
             { status: 500 }
         );
     }
+}
+
+function savedQueriesReadme() {
+    return [
+        "# Saved Queries",
+        "",
+        "Each `.sql` file contains optional `-- xpp:*` metadata comments followed by the SQL body.",
+        "",
+        "Supported metadata:",
+        "",
+        "- `-- xpp:name:`",
+        "- `-- xpp:version:`",
+        "- `-- xpp:databaseName:`",
+        "- `-- xpp:description:`",
+        "",
+        "The import workflow stores the SQL as a saved query. It does not execute imported SQL.",
+        "",
+    ].join("\n");
 }
 
 function timestampForFilename(date) {

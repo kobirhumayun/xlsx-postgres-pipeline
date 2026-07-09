@@ -150,7 +150,26 @@ Body:
 
 When `ids` is omitted or empty, all saved queries are exported. Each `.sql`
 file stores saved-query metadata in leading `-- xpp:*` comments followed by the
-SQL body.
+SQL body. The zip also includes `queries/README.md` with the file-format notes.
+
+`POST /api/saved-queries/files/preview`
+
+Previews an import without writing to the database.
+
+Multipart form fields:
+
+- `files`: one or more `.sql` files.
+- `mode`: optional import mode.
+
+Supported import modes:
+
+- `upsert`: create new queries and update matching names.
+- `create`: create new queries and skip matching names.
+- `copy`: create imported queries as copies, adding numeric suffixes when needed.
+- `replace`: delete existing saved queries and create the valid imported queries.
+
+The response includes counts for created, updated, skipped, and errored files,
+plus per-file actions.
 
 `POST /api/saved-queries/files/import`
 
@@ -159,10 +178,11 @@ Imports one or more plain `.sql` files into saved queries.
 Multipart form fields:
 
 - `files`: one or more `.sql` files.
-- `mode`: optional, either `upsert` or `create`. Defaults to `upsert`.
+- `mode`: optional import mode. Defaults to `upsert`.
 
 The import parser reads leading `-- xpp:*` metadata comments and saves the
-remaining SQL body. Imported SQL is not executed.
+remaining SQL body. Imported SQL is not executed. `replace` imports are rejected
+when any selected file has a parse error.
 
 ## Backup
 

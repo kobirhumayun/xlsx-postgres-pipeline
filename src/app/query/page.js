@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Sidebar } from "@/components/query/sidebar";
 import { QueryEditor } from "@/components/query/query-editor";
 import { ResultsDisplay } from "@/components/query/results-display";
+import { SavedQueryImportDialog } from "@/components/query/saved-query-import-dialog";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -39,6 +40,12 @@ export default function QueryPage() {
     const [isSaving, setIsSaving] = useState(false);
     const [isImportingSavedQueries, setIsImportingSavedQueries] = useState(false);
     const [isExportingSavedQueries, setIsExportingSavedQueries] = useState(false);
+    const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+    const [pendingImportFiles, setPendingImportFiles] = useState([]);
+    const [savedQueryImportMode, setSavedQueryImportMode] = useState("upsert");
+    const [savedQueryImportPreview, setSavedQueryImportPreview] = useState(null);
+    const [savedQueryImportResult, setSavedQueryImportResult] = useState(null);
+    const [isPreviewingSavedQueryImport, setIsPreviewingSavedQueryImport] = useState(false);
 
     // Overwrite Confirmation State
     const [isOverwriteDialogOpen, setIsOverwriteDialogOpen] = useState(false);
@@ -275,8 +282,12 @@ export default function QueryPage() {
         }
     };
 
-    const handleExportSavedQueries = async () => {
-        if (savedQueries.length === 0) {
+    const handleExportSavedQueries = async (ids = null) => {
+        const exportIds = Array.isArray(ids) && ids.length > 0
+            ? ids
+            : savedQueries.map((sq) => sq.id);
+
+        if (exportIds.length === 0) {
             toast.info("No saved queries to export");
             return;
         }
@@ -288,7 +299,7 @@ export default function QueryPage() {
             const response = await fetch("/api/saved-queries/files/export", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ids: savedQueries.map((sq) => sq.id) }),
+                body: JSON.stringify({ ids: exportIds }),
             });
 
             if (!response.ok) {
@@ -317,16 +328,53 @@ export default function QueryPage() {
     };
 
     const handleImportSavedQueries = async (files) => {
-        const sqlFiles = files.filter((file) => file.name.toLowerCase().endsWith(".sql"));
-
-        if (sqlFiles.length === 0) {
-            toast.error("Select one or more .sql files to import");
+        if (files.length === 0) {
+            toast.error("Select one or more files to import");
             return;
         }
 
+        setPendingImportFiles(files);
+        setSavedQueryImportMode("upsert");
+        setSavedQueryImportPreview(null);
+        setSavedQueryImportResult(null);
+        setIsImportDialogOpen(true);
+        await previewSavedQueryImport(files, "upsert");
+    };
+
+    const previewSavedQueryImport = async (files, mode) => {
         const formData = new FormData();
-        sqlFiles.forEach((file) => formData.append("files", file));
-        formData.append("mode", "upsert");
+        files.forEach((file) => formData.append("files", file));
+        formData.append("mode", mode);
+
+        setIsPreviewingSavedQueryImport(true);
+
+        try {
+            const preview = await fetchJson("/api/saved-queries/files/preview", {
+                method: "POST",
+                body: formData,
+            });
+            setSavedQueryImportPreview(preview);
+        } catch (err) {
+            console.error(err);
+            toast.error(err.message || "Failed to preview saved queries");
+        } finally {
+            setIsPreviewingSavedQueryImport(false);
+        }
+    };
+
+    const handleImportModeChange = async (mode) => {
+        setSavedQueryImportMode(mode);
+        setSavedQueryImportPreview(null);
+        setSavedQueryImportResult(null);
+        await previewSavedQueryImport(pendingImportFiles, mode);
+    };
+
+    const handleConfirmSavedQueryImport = async () => {
+        if (pendingImportFiles.length === 0) return;
+
+        const formData = new FormData();
+        pendingImportFiles.forEach((file) => formData.append("files", file));
+        formData.append("mode", savedQueryImportMode);
 
         setIsImportingSavedQueries(true);
         const toastId = toast.loading("Importing saved queries...");
@@ -337,6 +385,7 @@ export default function QueryPage() {
                 body: formData,
             });
 
+            setSavedQueryImportResult(summary);
             loadSavedQueries();
 
             const message = [
@@ -345,7 +394,7 @@ export default function QueryPage() {
                 `${summary.skipped} skipped`,
             ].join(", ");
 
-            if (summary.errors?.length) {
+            if (summary.errors > 0) {
                 toast.warning(`Import finished: ${message}`, { id: toastId });
             } else {
                 toast.success(`Import finished: ${message}`, { id: toastId });
@@ -408,6 +457,8 @@ export default function QueryPage() {
                 onEditQuery={handleEditQuery}
                 onImportSavedQueries={handleImportSavedQueries}
                 onExportSavedQueries={handleExportSavedQueries}
+                onExportSelectedSavedQueries={handleExportSavedQueries}
+                onExportSingleSavedQuery={(sq) => handleExportSavedQueries([sq.id])}
                 isImportingSavedQueries={isImportingSavedQueries}
                 isExportingSavedQueries={isExportingSavedQueries}
                 // History Props
@@ -479,6 +530,26 @@ export default function QueryPage() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            <SavedQueryImportDialog
+                open={isImportDialogOpen}
+                onOpenChange={(open) => {
+                    setIsImportDialogOpen(open);
+                    if (!open) {
+                        setPendingImportFiles([]);
+                        setSavedQueryImportPreview(null);
+                        setSavedQueryImportResult(null);
+                    }
+                }}
+                files={pendingImportFiles}
+                mode={savedQueryImportMode}
+                onModeChange={handleImportModeChange}
+                preview={savedQueryImportPreview}
+                result={savedQueryImportResult}
+                isPreviewing={isPreviewingSavedQueryImport}
+                isImporting={isImportingSavedQueries}
+                onConfirm={handleConfirmSavedQueryImport}
+            />
 
             {/* Duplicate Name Alert */}
             <AlertDialog open={isDuplicateDialogOpen} onOpenChange={setIsDuplicateDialogOpen}>
