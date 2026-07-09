@@ -58,6 +58,21 @@ Operational implication:
 - Database names are discovered from PostgreSQL and passed through the UI, but
   direct API callers can still submit a database name.
 
+## Schema Metadata Export
+
+`POST /api/schema/export` reads PostgreSQL catalog metadata from the selected
+database and packages it for Git and AI-agent context.
+
+The export can include:
+
+- Tables and columns.
+- Primary keys, foreign keys, unique constraints, and checks.
+- Index definitions.
+- Optional views and materialized views.
+- Optional estimated row counts from PostgreSQL catalog statistics.
+
+The export does not include table data or sample rows.
+
 ## Flexible Import Tables
 
 Flexible import writes into user-selected PostgreSQL tables.

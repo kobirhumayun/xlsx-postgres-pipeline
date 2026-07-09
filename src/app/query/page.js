@@ -27,6 +27,7 @@ export default function QueryPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [isExporting, setIsExporting] = useState(false);
+    const [isExportingSchema, setIsExportingSchema] = useState(false);
 
     // Schema Browser State
     const [dbList, setDbList] = useState([]);
@@ -282,6 +283,47 @@ export default function QueryPage() {
         }
     };
 
+    const handleExportSchema = async (options) => {
+        if (!options.databaseName) {
+            toast.error("Select a database before exporting schema");
+            return;
+        }
+
+        setIsExportingSchema(true);
+        const toastId = toast.loading("Exporting schema metadata...");
+
+        try {
+            const response = await fetch("/api/schema/export", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(options),
+            });
+
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.error || "Failed to export schema");
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filenameFromContentDisposition(
+                response.headers.get("content-disposition")
+            ) || "database-schema.zip";
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            toast.success("Schema exported", { id: toastId });
+        } catch (err) {
+            console.error(err);
+            toast.error(err.message || "Failed to export schema", { id: toastId });
+        } finally {
+            setIsExportingSchema(false);
+        }
+    };
+
     const handleExportSavedQueries = async (ids = null) => {
         const exportIds = Array.isArray(ids) && ids.length > 0
             ? ids
@@ -450,6 +492,8 @@ export default function QueryPage() {
                 selectedDb={selectedDb}
                 setSelectedDb={setSelectedDb}
                 onInsertTable={insertTableName}
+                onExportSchema={handleExportSchema}
+                isExportingSchema={isExportingSchema}
                 // Saved Queries Props
                 savedQueries={savedQueries}
                 onDeleteQuery={handleDeleteQuery}

@@ -59,6 +59,40 @@ Allowed column types:
 - `TIMESTAMP`
 - `JSONB`
 
+## Schema Export
+
+`POST /api/schema/export`
+
+Exports PostgreSQL schema metadata as a `.zip` for Git storage and AI-agent
+context. The export is metadata-only and does not include sample rows or table
+data.
+
+Body:
+
+```json
+{
+  "databaseName": "optional database name",
+  "schemas": ["optional schema names"],
+  "includeRowCounts": true,
+  "includeIndexes": true,
+  "includeConstraints": true,
+  "includeViews": false
+}
+```
+
+When `schemas` is omitted or empty, all non-system schemas are included.
+
+The zip contains:
+
+- `schema/README.md`
+- `schema/database.schema.json`
+- `schema/database.schema.md`
+- `schema/tables/*.md`
+- `schema/tables/*.sql`
+
+The JSON file is the canonical machine-readable schema context. Markdown and
+SQL files are generated for human and AI-agent readability.
+
 ## Flexible Import
 
 `POST /api/import/flexible`

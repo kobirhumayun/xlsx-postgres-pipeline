@@ -1,14 +1,34 @@
-import { Database, Table, Search } from "lucide-react";
+import { Database, Table, Search, Download } from "lucide-react";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
 export function SchemaBrowser({
     dbList,
     tableList,
     selectedDb,
     setSelectedDb,
-    onInsertTable
+    onInsertTable,
+    onExportSchema = () => {},
+    isExportingSchema = false,
 }) {
     const [searchQuery, setSearchQuery] = useState("");
+    const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+    const [schemaFilter, setSchemaFilter] = useState("");
+    const [includeRowCounts, setIncludeRowCounts] = useState(true);
+    const [includeIndexes, setIncludeIndexes] = useState(true);
+    const [includeConstraints, setIncludeConstraints] = useState(true);
+    const [includeViews, setIncludeViews] = useState(false);
 
     const filteredTables = tableList.filter(t =>
         t.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -31,6 +51,19 @@ export function SchemaBrowser({
                         {dbList.map(db => <option key={db} value={db}>{db}</option>)}
                     </select>
                 </label>
+
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsExportDialogOpen(true)}
+                    disabled={!selectedDb || isExportingSchema}
+                    className="w-full rounded-md border-zinc-200 text-zinc-600"
+                    title="Export schema metadata"
+                >
+                    <Download className="h-4 w-4" />
+                    {isExportingSchema ? "Exporting" : "Export Schema"}
+                </Button>
 
                 <div className="relative">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-zinc-400" />
@@ -73,6 +106,90 @@ export function SchemaBrowser({
                     )}
                 </ul>
             </div>
+
+            <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
+                <DialogContent className="sm:max-w-[520px]">
+                    <DialogHeader>
+                        <DialogTitle>Export Schema</DialogTitle>
+                        <DialogDescription>
+                            {selectedDb || "No database selected"}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid gap-4 py-2">
+                        <div className="grid gap-2">
+                            <Label htmlFor="schema-filter">Schemas</Label>
+                            <Input
+                                id="schema-filter"
+                                value={schemaFilter}
+                                onChange={(event) => setSchemaFilter(event.target.value)}
+                                placeholder="All non-system schemas"
+                            />
+                        </div>
+
+                        <div className="grid gap-3 rounded-md border border-zinc-200 p-3">
+                            <ToggleRow
+                                label="Estimated row counts"
+                                checked={includeRowCounts}
+                                onCheckedChange={setIncludeRowCounts}
+                            />
+                            <ToggleRow
+                                label="Indexes"
+                                checked={includeIndexes}
+                                onCheckedChange={setIncludeIndexes}
+                            />
+                            <ToggleRow
+                                label="Constraints"
+                                checked={includeConstraints}
+                                onCheckedChange={setIncludeConstraints}
+                            />
+                            <ToggleRow
+                                label="Views"
+                                checked={includeViews}
+                                onCheckedChange={setIncludeViews}
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setIsExportDialogOpen(false)}
+                            disabled={isExportingSchema}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={async () => {
+                                await onExportSchema({
+                                    databaseName: selectedDb,
+                                    schemas: schemaFilter
+                                        .split(",")
+                                        .map((schema) => schema.trim())
+                                        .filter(Boolean),
+                                    includeRowCounts,
+                                    includeIndexes,
+                                    includeConstraints,
+                                    includeViews,
+                                });
+                                setIsExportDialogOpen(false);
+                            }}
+                            disabled={!selectedDb || isExportingSchema}
+                        >
+                            {isExportingSchema ? "Exporting..." : "Export"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </div>
+    );
+}
+
+function ToggleRow({ label, checked, onCheckedChange }) {
+    return (
+        <div className="flex items-center justify-between gap-3">
+            <Label className="text-sm text-zinc-700">{label}</Label>
+            <Switch checked={checked} onCheckedChange={onCheckedChange} />
         </div>
     );
 }

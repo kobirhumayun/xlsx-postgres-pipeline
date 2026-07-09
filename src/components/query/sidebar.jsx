@@ -11,6 +11,8 @@ export function Sidebar({
     selectedDb,
     setSelectedDb,
     onInsertTable,
+    onExportSchema,
+    isExportingSchema,
 
     // Saved Queries Props
     savedQueries,
@@ -100,6 +102,8 @@ export function Sidebar({
                         selectedDb={selectedDb}
                         setSelectedDb={setSelectedDb}
                         onInsertTable={onInsertTable}
+                        onExportSchema={onExportSchema}
+                        isExportingSchema={isExportingSchema}
                     />
                 </div>
                 <div className={`absolute inset-0 ${activeTab === "saved" ? "block" : "hidden"}`}>

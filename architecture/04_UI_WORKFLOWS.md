@@ -39,6 +39,7 @@ Path: `/query`
 Purpose:
 
 - Browse databases and tables.
+- Export selected database schema metadata for AI-agent context.
 - Write SQL in a Monaco editor.
 - Run queries and preview results.
 - Export query results.
@@ -50,6 +51,7 @@ Purpose:
 Primary API routes:
 
 - `GET /api/structure`
+- `POST /api/schema/export`
 - `POST /api/query/run`
 - `POST /api/query/export`
 - `/api/saved-queries`
@@ -60,6 +62,9 @@ Primary API routes:
 Important UI behavior:
 
 - A database must be selected before the Run button is enabled.
+- Schema export is available from the Schema tab after selecting a database.
+- Schema export can include estimated row counts, indexes, constraints, and
+  views. It does not include table data.
 - Export only requires query text in the current UI, but the API still receives
   the selected database when present.
 - Query history is local to the browser.
