@@ -37,6 +37,8 @@ export default function QueryPage() {
     const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
     const [editingQuery, setEditingQuery] = useState(null); // Track which query is being edited
     const [isSaving, setIsSaving] = useState(false);
+    const [isImportingSavedQueries, setIsImportingSavedQueries] = useState(false);
+    const [isExportingSavedQueries, setIsExportingSavedQueries] = useState(false);
 
     // Overwrite Confirmation State
     const [isOverwriteDialogOpen, setIsOverwriteDialogOpen] = useState(false);
@@ -273,6 +275,89 @@ export default function QueryPage() {
         }
     };
 
+    const handleExportSavedQueries = async () => {
+        if (savedQueries.length === 0) {
+            toast.info("No saved queries to export");
+            return;
+        }
+
+        setIsExportingSavedQueries(true);
+        const toastId = toast.loading("Exporting saved queries...");
+
+        try {
+            const response = await fetch("/api/saved-queries/files/export", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ids: savedQueries.map((sq) => sq.id) }),
+            });
+
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.error || "Failed to export saved queries");
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filenameFromContentDisposition(
+                response.headers.get("content-disposition")
+            ) || "saved-queries.zip";
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            toast.success("Saved queries exported", { id: toastId });
+        } catch (err) {
+            console.error(err);
+            toast.error(err.message || "Failed to export saved queries", { id: toastId });
+        } finally {
+            setIsExportingSavedQueries(false);
+        }
+    };
+
+    const handleImportSavedQueries = async (files) => {
+        const sqlFiles = files.filter((file) => file.name.toLowerCase().endsWith(".sql"));
+
+        if (sqlFiles.length === 0) {
+            toast.error("Select one or more .sql files to import");
+            return;
+        }
+
+        const formData = new FormData();
+        sqlFiles.forEach((file) => formData.append("files", file));
+        formData.append("mode", "upsert");
+
+        setIsImportingSavedQueries(true);
+        const toastId = toast.loading("Importing saved queries...");
+
+        try {
+            const summary = await fetchJson("/api/saved-queries/files/import", {
+                method: "POST",
+                body: formData,
+            });
+
+            loadSavedQueries();
+
+            const message = [
+                `${summary.created} created`,
+                `${summary.updated} updated`,
+                `${summary.skipped} skipped`,
+            ].join(", ");
+
+            if (summary.errors?.length) {
+                toast.warning(`Import finished: ${message}`, { id: toastId });
+            } else {
+                toast.success(`Import finished: ${message}`, { id: toastId });
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error(err.message || "Failed to import saved queries", { id: toastId });
+        } finally {
+            setIsImportingSavedQueries(false);
+        }
+    };
+
     const loadQueryIntoEditor = (sq) => {
         // Dirty State Check
         if (query.trim() && query.trim() !== sq.query.trim()) {
@@ -321,6 +406,10 @@ export default function QueryPage() {
                 onDeleteQuery={handleDeleteQuery}
                 onLoadQuery={loadQueryIntoEditor}
                 onEditQuery={handleEditQuery}
+                onImportSavedQueries={handleImportSavedQueries}
+                onExportSavedQueries={handleExportSavedQueries}
+                isImportingSavedQueries={isImportingSavedQueries}
+                isExportingSavedQueries={isExportingSavedQueries}
                 // History Props
                 queryHistory={queryHistory}
                 onLoadHistory={loadHistoryItem}
@@ -429,4 +518,11 @@ export default function QueryPage() {
             </AlertDialog>
         </div>
     );
+}
+
+function filenameFromContentDisposition(value) {
+    if (!value) return null;
+
+    const match = value.match(/filename="?([^";]+)"?/i);
+    return match ? match[1] : null;
 }

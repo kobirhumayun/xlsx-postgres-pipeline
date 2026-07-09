@@ -135,6 +135,35 @@ Updates a saved query.
 
 Deletes a saved query.
 
+`POST /api/saved-queries/files/export`
+
+Exports saved queries as a `.zip` file containing plain `.sql` files under
+`queries/`.
+
+Body:
+
+```json
+{
+  "ids": ["optional saved query ids"]
+}
+```
+
+When `ids` is omitted or empty, all saved queries are exported. Each `.sql`
+file stores saved-query metadata in leading `-- xpp:*` comments followed by the
+SQL body.
+
+`POST /api/saved-queries/files/import`
+
+Imports one or more plain `.sql` files into saved queries.
+
+Multipart form fields:
+
+- `files`: one or more `.sql` files.
+- `mode`: optional, either `upsert` or `create`. Defaults to `upsert`.
+
+The import parser reads leading `-- xpp:*` metadata comments and saves the
+remaining SQL body. Imported SQL is not executed.
+
 ## Backup
 
 `GET /api/backup`

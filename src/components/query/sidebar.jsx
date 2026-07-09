@@ -17,6 +17,10 @@ export function Sidebar({
     onDeleteQuery,
     onLoadQuery,
     onEditQuery,
+    onImportSavedQueries,
+    onExportSavedQueries,
+    isImportingSavedQueries,
+    isExportingSavedQueries,
 
     // History Props
     queryHistory,
@@ -102,6 +106,10 @@ export function Sidebar({
                         onDelete={onDeleteQuery}
                         onLoad={onLoadQuery}
                         onEdit={onEditQuery}
+                        onImportFiles={onImportSavedQueries}
+                        onExportAll={onExportSavedQueries}
+                        isImporting={isImportingSavedQueries}
+                        isExporting={isExportingSavedQueries}
                         compact={true}
                     />
                 </div>

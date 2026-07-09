@@ -29,6 +29,20 @@ Fields:
 
 The migration for this model lives in `prisma/migrations`.
 
+## Saved Query Files
+
+Saved queries can be exported for Git storage as plain `.sql` files. The file
+format stores metadata in leading SQL comments:
+
+- `-- xpp:name:`
+- `-- xpp:version:`
+- `-- xpp:databaseName:`
+- `-- xpp:description:`
+
+The remaining file body is stored as the saved query SQL. Importing these files
+creates or updates `SavedQuery` records by query name and does not execute the
+SQL.
+
 ## Dynamic Database Connections
 
 `src/lib/db.js` creates a default pool from `DATABASE_URL`.

@@ -1,4 +1,5 @@
-import { Trash2, Edit, Search } from "lucide-react";
+import { Trash2, Edit, Search, Upload, Download } from "lucide-react";
+import { useRef, useState } from "react";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -10,16 +11,21 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { useState } from "react";
+import { Button } from "@/components/ui/button";
 
 export function SavedQueriesList({
     savedQueries,
     onDelete,
     onLoad,
     onEdit,
+    onImportFiles = () => {},
+    onExportAll = () => {},
+    isImporting = false,
+    isExporting = false,
     compact = false
 }) {
     const [searchQuery, setSearchQuery] = useState("");
+    const fileInputRef = useRef(null);
 
     const filteredQueries = savedQueries.filter(sq => {
         const term = searchQuery.toLowerCase();
@@ -37,6 +43,46 @@ export function SavedQueriesList({
                         Saved Queries
                     </h2>
                 )}
+                <div className="flex items-center gap-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isImporting}
+                        title="Import SQL files"
+                        className="flex-1 h-8 rounded-md border-zinc-200 px-2 text-xs text-zinc-600"
+                    >
+                        <Upload className="w-3.5 h-3.5" />
+                        {isImporting ? "Importing" : "Import"}
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={onExportAll}
+                        disabled={isExporting || savedQueries.length === 0}
+                        title="Export saved queries"
+                        className="flex-1 h-8 rounded-md border-zinc-200 px-2 text-xs text-zinc-600"
+                    >
+                        <Download className="w-3.5 h-3.5" />
+                        {isExporting ? "Exporting" : "Export"}
+                    </Button>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".sql,text/plain"
+                        multiple
+                        className="hidden"
+                        onChange={(event) => {
+                            const files = Array.from(event.target.files || []);
+                            if (files.length > 0) {
+                                onImportFiles(files);
+                            }
+                            event.target.value = "";
+                        }}
+                    />
+                </div>
                 <div className="relative">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-zinc-400" />
                     <input
