@@ -100,7 +100,7 @@ export function SavedQueriesList({
                         size="sm"
                         onClick={() => fileInputRef.current?.click()}
                         disabled={isImporting}
-                        title="Import SQL files"
+                        title="Import SQL files or a repository ZIP"
                         className="flex-1 h-8 rounded-md border-zinc-200 px-2 text-xs text-zinc-600"
                     >
                         <Upload className="w-3.5 h-3.5" />
@@ -121,7 +121,7 @@ export function SavedQueriesList({
                     <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".sql,text/plain"
+                        accept=".sql,.zip,text/plain,application/zip"
                         multiple
                         className="hidden"
                         onChange={(event) => {

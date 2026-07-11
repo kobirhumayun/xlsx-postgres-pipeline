@@ -1,13 +1,12 @@
-import { savedQueryFileName, toSavedQuerySqlFile } from "@/lib/saved-query-files";
-import { schemaExportFiles } from "@/lib/schema-export";
+import { savedQueryFileName, toSavedQuerySqlFile } from "./saved-query-files.js";
+import { repositorySchemaFiles } from "./schema-export.js";
+import { createHash } from "node:crypto";
 
-export function repositoryBundleFiles(schema, savedQueries, generatedAt = new Date()) {
+export function repositoryBundleFiles(schema, savedQueries, generatedAt = new Date(), bundleOptions = {}) {
     const databaseSlug = pathSegment(schema.database);
     const queryGroups = groupQueriesByDatabase(savedQueries);
-    const stableSchema = { ...schema };
-    delete stableSchema.exportedAt;
-
-    const manifest = buildManifest(schema, savedQueries, generatedAt);
+    const schemaFiles = repositorySchemaFiles(schema);
+    const manifest = buildManifest(schema, savedQueries, schemaFiles, generatedAt, bundleOptions);
     const files = [
         {
             name: "README.md",
@@ -24,7 +23,7 @@ export function repositoryBundleFiles(schema, savedQueries, generatedAt = new Da
             data: `${JSON.stringify(manifest, null, 2)}\n`,
             date: generatedAt,
         },
-        ...schemaExportFiles(stableSchema).map((file) => ({
+        ...schemaFiles.map((file) => ({
             ...file,
             date: generatedAt,
         })),
@@ -44,7 +43,7 @@ export function repositoryBundleFiles(schema, savedQueries, generatedAt = new Da
     return { files, manifest };
 }
 
-function buildManifest(schema, savedQueries, generatedAt) {
+function buildManifest(schema, savedQueries, schemaFiles, generatedAt, bundleOptions) {
     const tables = schema.schemas.flatMap((entry) => entry.tables);
     const unassignedCount = savedQueries.filter(
         (query) => !query.databaseName?.trim()
@@ -52,14 +51,10 @@ function buildManifest(schema, savedQueries, generatedAt) {
     const selectedDatabaseQueryCount = savedQueries.filter(
         (query) => query.databaseName?.trim() === schema.database
     ).length;
-    const otherDatabaseQueryCount = savedQueries.length - unassignedCount - selectedDatabaseQueryCount;
     const warnings = [];
 
     if (unassignedCount > 0) {
         warnings.push(`${unassignedCount} query file(s) have no databaseName and require review.`);
-    }
-    if (otherDatabaseQueryCount > 0) {
-        warnings.push(`${otherDatabaseQueryCount} query file(s) target databases other than the exported schema database.`);
     }
 
     return {
@@ -67,7 +62,8 @@ function buildManifest(schema, savedQueries, generatedAt) {
         version: 1,
         generatedAt: generatedAt.toISOString(),
         database: schema.database,
-        canonicalSchema: "schema/database.schema.json",
+        schemaCatalog: "schema/catalog.md",
+        schemaFingerprint: schemaFingerprint(schemaFiles),
         schemas: schema.schemas.map((entry) => entry.name),
         counts: {
             tables: tables.filter((table) => table.kind === "table" || table.kind === "partitioned_table").length,
@@ -75,11 +71,24 @@ function buildManifest(schema, savedQueries, generatedAt) {
             queries: savedQueries.length,
             selectedDatabaseQueries: selectedDatabaseQueryCount,
             unassignedQueries: unassignedCount,
-            otherDatabaseQueries: otherDatabaseQueryCount,
         },
         schemaOptions: schema.options,
+        queryOptions: {
+            includeUnassignedQueries: bundleOptions.includeUnassignedQueries !== false,
+        },
         warnings,
     };
+}
+
+function schemaFingerprint(schemaFiles) {
+    const hash = createHash("sha256");
+    for (const file of schemaFiles.filter((entry) => entry.name.endsWith(".sql"))) {
+        hash.update(file.name);
+        hash.update("\0");
+        hash.update(file.data);
+        hash.update("\0");
+    }
+    return hash.digest("hex");
 }
 
 function groupQueriesByDatabase(savedQueries) {
@@ -104,15 +113,15 @@ This repository contains PostgreSQL schema metadata and saved SQL queries for AI
 
 ## Source Of Truth
 
-- \`schema/database.schema.json\` is the canonical database structure for \`${databaseName}\`.
-- \`schema/database.schema.md\` and \`schema/tables/\` are generated reading aids.
+- \`schema/catalog.md\` is the compact relation and foreign-key index for \`${databaseName}\`.
+- \`schema/tables/*.sql\` contains the canonical table, constraint, index, and view context.
 - Files under \`schema/\` are generated. Do not edit them manually.
 - Existing queries are grouped under \`queries/<database>/\` using their \`xpp:databaseName\` metadata.
 - Read \`manifest.json\` for export counts, options, and warnings.
 
 ## Agent Workflow
 
-Before proposing SQL, read \`manifest.json\`, \`schema/database.schema.json\`, and relevant files under \`schema/tables/\`. Review existing queries for naming and business conventions.
+Before proposing SQL, read \`manifest.json\` and \`schema/catalog.md\`, then open only the relevant files under \`schema/tables/\`. Review existing queries for naming and business conventions.
 
 When creating a query for this schema, add one file under \`queries/${databaseSlug}/\`. Use a lowercase kebab-case filename ending in \`.sql\`. Do not put SQL inside Markdown fences.
 
@@ -155,9 +164,10 @@ function repositoryAgentInstructions(databaseName, databaseSlug) {
 
 ## Query Authoring Rules
 
-Read \`README.md\`, \`manifest.json\`, and \`schema/database.schema.json\` before writing SQL.
+Read \`README.md\`, \`manifest.json\`, and \`schema/catalog.md\` before writing SQL.
 
-- Treat \`schema/database.schema.json\` as canonical for \`${databaseName}\`.
+- Treat \`schema/tables/*.sql\` as canonical structure context for \`${databaseName}\`.
+- Use \`schema/catalog.md\` to find relevant tables and relationships before opening table files.
 - Do not edit generated files under \`schema/\`.
 - Create one query per \`.sql\` file under \`queries/${databaseSlug}/\`.
 - Follow the exact leading \`-- xpp:*\` metadata structure documented in \`README.md\`.

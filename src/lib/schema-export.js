@@ -150,12 +150,15 @@ export function tableMarkdown(table) {
 
 export function tableSql(table) {
     if (table.kind === "view" || table.kind === "materialized_view") {
+        const relationType = table.kind === "materialized_view"
+            ? "MATERIALIZED VIEW"
+            : "VIEW";
         return [
             `-- ${table.fullName}`,
             `-- ${table.kind.replace("_", " ")}`,
             "",
             table.viewDefinition
-                ? `${table.viewDefinition.trimEnd()};`
+                ? `CREATE ${relationType} ${quoteIdent(table.schema)}.${quoteIdent(table.name)} AS\n${table.viewDefinition.trimEnd().replace(/;+$/, "")};`
                 : `-- View definition is unavailable for ${table.fullName}.`,
             "",
         ].join("\n");
@@ -163,9 +166,15 @@ export function tableSql(table) {
 
     const definitions = table.columns.map((column) => {
         const parts = [quoteIdent(column.name), column.type];
-        if (column.generated) parts.push(`GENERATED ${column.generated}`);
-        if (column.identity) parts.push(`IDENTITY ${column.identity}`);
-        if (column.default) parts.push(`DEFAULT ${column.default}`);
+
+        if (column.generated && column.default) {
+            parts.push(`GENERATED ALWAYS AS (${column.default}) STORED`);
+        } else if (column.identity) {
+            parts.push(`GENERATED ${column.identity.toUpperCase()} AS IDENTITY`);
+        } else if (column.default) {
+            parts.push(`DEFAULT ${column.default}`);
+        }
+
         if (!column.nullable) parts.push("NOT NULL");
         return `    ${parts.join(" ")}`;
     });
@@ -188,7 +197,8 @@ export function tableSql(table) {
 
     const lines = [
         `-- ${table.fullName}`,
-        "-- Approximate schema context generated from PostgreSQL catalogs.",
+        "-- Schema context generated from PostgreSQL catalogs.",
+        ...(table.comment ? [`-- Description: ${singleLine(table.comment)}`] : []),
         "",
         `CREATE TABLE ${quoteIdent(table.schema)}.${quoteIdent(table.name)} (`,
         definitions.join(",\n"),
@@ -202,8 +212,67 @@ export function tableSql(table) {
         }
     }
 
+    const describedColumns = table.columns.filter((column) => column.comment);
+    if (describedColumns.length > 0) {
+        lines.push("-- Column descriptions:");
+        for (const column of describedColumns) {
+            lines.push(`-- ${column.name}: ${singleLine(column.comment)}`);
+        }
+    }
+
     lines.push("");
     return lines.join("\n");
+}
+
+export function schemaCatalog(schema) {
+    const lines = [
+        `# Database Catalog: ${schema.database}`,
+        "",
+        "Open only the relevant files under `tables/` for complete column and constraint context.",
+        "",
+        "## Relations",
+        "",
+        "| Relation | Kind | Estimated rows | Primary key | Description |",
+        "| --- | --- | ---: | --- | --- |",
+    ];
+    const tables = schema.schemas.flatMap((entry) => entry.tables);
+
+    for (const table of tables) {
+        lines.push(`| ${escapeMarkdownCell(table.fullName)} | ${table.kind} | ${table.estimatedRows ?? ""} | ${escapeMarkdownCell(table.primaryKey.join(", "))} | ${escapeMarkdownCell(table.comment || "")} |`);
+    }
+
+    lines.push("", "## Relationships", "");
+    const relationships = tables.flatMap((table) => table.foreignKeys.map((foreignKey) => (
+        `- ${table.fullName}(${foreignKey.columns.join(", ")}) -> ${foreignKey.references.schema}.${foreignKey.references.table}(${foreignKey.references.columns.join(", ")})`
+    )));
+
+    if (relationships.length > 0) {
+        lines.push(...relationships);
+    } else {
+        lines.push("No foreign-key relationships were exported.");
+    }
+
+    lines.push("");
+    return lines.join("\n");
+}
+
+export function repositorySchemaFiles(schema) {
+    const files = [
+        { name: "schema/catalog.md", data: schemaCatalog(schema) },
+    ];
+    const usedNames = new Set();
+
+    for (const schemaEntry of schema.schemas) {
+        for (const table of schemaEntry.tables) {
+            const baseName = uniqueFileBase(`${table.schema}.${table.name}`, usedNames);
+            files.push({
+                name: `schema/tables/${baseName}.sql`,
+                data: tableSql(table),
+            });
+        }
+    }
+
+    return files;
 }
 
 export function schemaExportFiles(schema) {
@@ -526,6 +595,10 @@ function slugify(value) {
 
 function escapeMarkdownCell(value) {
     return String(value ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+
+function singleLine(value) {
+    return String(value ?? "").replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function toTextArray(value) {

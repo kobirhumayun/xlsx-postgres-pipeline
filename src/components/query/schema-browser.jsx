@@ -31,6 +31,7 @@ export function SchemaBrowser({
     const [includeIndexes, setIncludeIndexes] = useState(true);
     const [includeConstraints, setIncludeConstraints] = useState(true);
     const [includeViews, setIncludeViews] = useState(false);
+    const [includeUnassignedQueries, setIncludeUnassignedQueries] = useState(true);
 
     const filteredTables = tableList.filter(t =>
         t.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -59,7 +60,7 @@ export function SchemaBrowser({
                     variant="outline"
                     size="sm"
                     onClick={() => setIsExportDialogOpen(true)}
-                    disabled={!selectedDb || isExportingSchema}
+                    disabled={!selectedDb || isExportingSchema || isExportingRepository}
                     className="w-full rounded-md border-zinc-200 text-zinc-600"
                     title="Export schema metadata"
                 >
@@ -153,6 +154,11 @@ export function SchemaBrowser({
                                 checked={includeViews}
                                 onCheckedChange={setIncludeViews}
                             />
+                            <ToggleRow
+                                label="Unassigned saved queries"
+                                checked={includeUnassignedQueries}
+                                onCheckedChange={setIncludeUnassignedQueries}
+                            />
                         </div>
                     </div>
 
@@ -177,6 +183,7 @@ export function SchemaBrowser({
                                     includeIndexes,
                                     includeConstraints,
                                     includeViews,
+                                    includeUnassignedQueries,
                                 });
                                 setIsExportDialogOpen(false);
                             }}

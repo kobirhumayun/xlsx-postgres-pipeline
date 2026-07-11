@@ -46,26 +46,26 @@ README.md
 AGENTS.md
 manifest.json
 schema/
-  database.schema.json
-  database.schema.md
+  catalog.md
   tables/
 queries/
   <database>/
   unassigned/
 ```
 
-`schema/database.schema.json` is the canonical database structure. Files under
-`schema/` are generated and must not be edited manually. Saved queries are
-grouped by their `databaseName`; queries without a database are placed under
-`queries/unassigned/` and reported in `manifest.json`.
+`schema/catalog.md` is the compact table and relationship index. Files under
+`schema/tables/` are the canonical structure context and must not be edited
+manually. The bundle includes queries for the selected database and, by
+default, queries without a database under `queries/unassigned/`.
 
 ### Instructions For AI Agents
 
-Before writing SQL, read `manifest.json`, `schema/database.schema.json`, the
-relevant files under `schema/tables/`, and existing queries for the target
+Before writing SQL, read `manifest.json` and `schema/catalog.md`, then open only
+the relevant files under `schema/tables/` and existing queries for the target
 database.
 
-- Use only tables and columns present in `schema/database.schema.json`.
+- Use only tables and columns present in the relevant `schema/tables/*.sql`
+  files.
 - Prefer declared foreign keys when joining tables.
 - Do not invent relationships. Ask for clarification or document an assumption
   in the query description when no foreign key establishes the relationship.
@@ -98,10 +98,16 @@ GROUP BY
     c.name;
 ```
 
-The supported metadata fields are `name`, `version`, `databaseName`, and
-`description`. End executable SQL statements with semicolons. The generated
+The required metadata fields are `name`, `version`, `databaseName`, and
+`description`. Empty database and description values are allowed, but all four
+metadata lines must be present. End executable SQL statements with semicolons. The generated
 bundle also contains these instructions in its own `README.md` and a concise
 `AGENTS.md`, so an AI agent can work directly from the extracted repository.
+
+Import accepts individual `.sql` files or a repository `.zip`. ZIP imports
+read only `queries/**/*.sql`; generated schema SQL is ignored. Import conflicts
+are matched by database and query name. The replacement mode deletes only
+queries in the database scopes represented by the imported files.
 
 ## Prerequisites
 

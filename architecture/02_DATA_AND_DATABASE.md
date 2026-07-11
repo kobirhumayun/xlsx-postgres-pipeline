@@ -44,6 +44,12 @@ creates, updates, copies, or replaces `SavedQuery` records depending on the
 selected import mode and does not execute the SQL. Exported zip files include
 `queries/README.md` with the file-format summary.
 
+`name` and version `1` metadata are required for import. Current exports always
+write all four metadata lines; `databaseName` and `description` values can be
+empty. Import identity is the case-insensitive combination of database name and
+query name. Repository ZIP imports read only `.sql` files under `queries/` and
+ignore schema SQL.
+
 ## Dynamic Database Connections
 
 `src/lib/db.js` creates a default pool from `DATABASE_URL`.
@@ -72,6 +78,10 @@ The export can include:
 - Optional estimated row counts from PostgreSQL catalog statistics.
 
 The export does not include table data or sample rows.
+
+Repository bundles use a compact `schema/catalog.md` plus one context DDL file
+per relation under `schema/tables/`. The standalone schema export retains JSON
+and Markdown representations for compatibility with external machine tooling.
 
 ## Flexible Import Tables
 

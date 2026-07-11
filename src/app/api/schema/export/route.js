@@ -1,6 +1,6 @@
 import { getDbPool } from "@/lib/db";
 import { collectDatabaseSchema, schemaExportFiles } from "@/lib/schema-export";
-import { createZip } from "@/lib/zip";
+import { createZipStream } from "@/lib/zip";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -38,14 +38,13 @@ export async function POST(request) {
             ...file,
             date: new Date(schema.exportedAt),
         }));
-        const zip = createZip(files);
+        const zip = createZipStream(files);
         const filename = `${safeFilename(schema.database)}-schema-${timestampForFilename(new Date())}.zip`;
 
         return new NextResponse(zip, {
             headers: {
                 "Content-Type": "application/zip",
                 "Content-Disposition": `attachment; filename="${filename}"`,
-                "Content-Length": String(zip.length),
             },
         });
     } catch (error) {

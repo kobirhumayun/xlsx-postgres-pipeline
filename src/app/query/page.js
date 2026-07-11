@@ -227,6 +227,7 @@ export default function QueryPage() {
         // Duplicate Name Check
         const duplicate = savedQueries.find(sq =>
             sq.name.toLowerCase() === name.trim().toLowerCase() &&
+            (sq.databaseName || "").toLowerCase() === (databaseName || "").trim().toLowerCase() &&
             sq.id !== editingQuery?.id
         );
 
@@ -645,7 +646,7 @@ export default function QueryPage() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>Duplicate Query Name</AlertDialogTitle>
                         <AlertDialogDescription>
-                            A query with the name &quot;{duplicateQueryName}&quot; already exists. Please choose a different name.
+                            A query with the name &quot;{duplicateQueryName}&quot; already exists for this database. Please choose a different name.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

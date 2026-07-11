@@ -20,6 +20,12 @@ Generate Prisma Client:
 npx prisma generate
 ```
 
+Query context feature tests:
+
+```bash
+npm run test:query-context
+```
+
 ## Current Validation Notes
 
 Prisma Client must exist before local production builds. In a clean local
@@ -39,9 +45,16 @@ The Dockerfile runs Prisma generation in the `deps` stage.
 
 ## Test Scripts
 
-Ad hoc verification scripts live in `test-scripts`.
+Focused query context tests run through Node's built-in test runner:
 
-They are not wired into `package.json` scripts and may require:
+- `test-scripts/query-context.test.mjs`
+
+They cover versioned query files, database-aware import identity, repository ZIP
+filtering, compact bundle contents, schema fingerprints, and context DDL.
+
+Other ad hoc verification scripts live in `test-scripts`.
+
+The other scripts are not wired into `package.json` scripts and may require:
 
 - A running PostgreSQL database.
 - A running Next.js app.
@@ -61,7 +74,8 @@ Before shipping documentation or deployment changes:
 1. Run `npx prisma generate`.
 2. Run `npm run build`.
 3. Run `npm run lint`.
-4. If database behavior changed, run the relevant script in `test-scripts`.
+4. Run `npm run test:query-context` when query context features change.
+5. If database behavior changed, run the relevant script in `test-scripts`.
 
 ## Known Documentation Scope
 

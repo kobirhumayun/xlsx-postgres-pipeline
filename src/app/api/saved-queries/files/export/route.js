@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { savedQueryFileName, toSavedQuerySqlFile } from "@/lib/saved-query-files";
-import { createZip } from "@/lib/zip";
+import { createZipStream } from "@/lib/zip";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -38,14 +38,13 @@ export async function POST(request) {
             })),
         ];
 
-        const zip = createZip(files);
+        const zip = createZipStream(files);
         const filename = `saved-queries-${timestampForFilename(new Date())}.zip`;
 
         return new NextResponse(zip, {
             headers: {
                 "Content-Type": "application/zip",
                 "Content-Disposition": `attachment; filename="${filename}"`,
-                "Content-Length": String(zip.length),
             },
         });
     } catch (error) {
@@ -61,14 +60,17 @@ function savedQueriesReadme() {
     return [
         "# Saved Queries",
         "",
-        "Each `.sql` file contains optional `-- xpp:*` metadata comments followed by the SQL body.",
+        "Each `.sql` file contains required `-- xpp:*` metadata comments followed by the SQL body.",
         "",
-        "Supported metadata:",
+        "Required metadata:",
         "",
         "- `-- xpp:name:`",
         "- `-- xpp:version:`",
         "- `-- xpp:databaseName:`",
         "- `-- xpp:description:`",
+        "",
+        "Empty databaseName and description values are allowed, but all metadata lines must be present.",
+        "File format version 1 is currently supported.",
         "",
         "The import workflow stores the SQL as a saved query. It does not execute imported SQL.",
         "",

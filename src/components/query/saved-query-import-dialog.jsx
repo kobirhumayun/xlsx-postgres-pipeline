@@ -28,7 +28,7 @@ const modeLabels = {
     upsert: "Update matches",
     create: "Create only",
     copy: "Import as copies",
-    replace: "Replace all",
+    replace: "Replace database queries",
 };
 
 const actionStyles = {
@@ -72,7 +72,7 @@ export function SavedQueryImportDialog({
                             <div>
                                 <p className="text-sm font-medium text-zinc-900">Conflict handling</p>
                                 <p className="text-xs text-zinc-500">
-                                    Choose how matching saved-query names should be handled.
+                                    Matches use both database and saved-query name.
                                 </p>
                             </div>
                             <Select value={mode} onValueChange={onModeChange} disabled={isImporting}>
@@ -83,7 +83,7 @@ export function SavedQueryImportDialog({
                                     <SelectItem value="upsert">Update matches</SelectItem>
                                     <SelectItem value="create">Create only</SelectItem>
                                     <SelectItem value="copy">Import as copies</SelectItem>
-                                    <SelectItem value="replace">Replace all</SelectItem>
+                                    <SelectItem value="replace">Replace database queries</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -93,7 +93,7 @@ export function SavedQueryImportDialog({
                                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                                 <p>
                                     This will delete {preview?.replaceCount ?? 0} existing saved
-                                    queries before importing the valid files.
+                                    queries from the database scopes represented by these files.
                                 </p>
                             </div>
                         )}

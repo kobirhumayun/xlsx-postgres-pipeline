@@ -4,21 +4,15 @@ export function toSavedQuerySqlFile(savedQuery) {
     const lines = [
         metadataLine("name", savedQuery.name),
         metadataLine("version", "1"),
+        metadataLine("databaseName", savedQuery.databaseName),
+        metadataLine("description", savedQuery.description),
     ];
-
-    if (savedQuery.databaseName) {
-        lines.push(metadataLine("databaseName", savedQuery.databaseName));
-    }
-
-    if (savedQuery.description) {
-        lines.push(metadataLine("description", savedQuery.description));
-    }
 
     lines.push("", savedQuery.query.trimEnd(), "");
     return lines.join("\n");
 }
 
-export function parseSavedQuerySqlFile(content, filename = "") {
+export function parseSavedQuerySqlFile(content, filename = "", options = {}) {
     const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     const lines = normalized.split("\n");
     const metadata = {};
@@ -38,6 +32,19 @@ export function parseSavedQuerySqlFile(content, filename = "") {
 
     const query = lines.slice(index).join("\n").trim();
     const name = (metadata.name || nameFromFilename(filename)).trim();
+
+    if (options.requireMetadata) {
+        const missingFields = ["name", "version"]
+            .filter((field) => !Object.prototype.hasOwnProperty.call(metadata, field));
+
+        if (missingFields.length > 0) {
+            throw new Error(`Missing required metadata: ${missingFields.join(", ")}.`);
+        }
+
+        if (metadata.version !== "1") {
+            throw new Error(`Unsupported xpp file version: ${metadata.version || "empty"}.`);
+        }
+    }
 
     if (!name) {
         throw new Error("Query name is required in metadata or filename.");

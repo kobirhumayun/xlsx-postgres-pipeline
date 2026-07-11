@@ -1,4 +1,5 @@
 import { parseSavedQuerySqlFile } from "./saved-query-files.js";
+import { readZipTextFiles } from "./zip.js";
 
 export const SAVED_QUERY_IMPORT_MODES = {
     upsert: "upsert",
@@ -13,22 +14,71 @@ export function normalizeImportMode(mode) {
         : SAVED_QUERY_IMPORT_MODES.upsert;
 }
 
+export async function expandSavedQueryImportFiles(files) {
+    const expanded = [];
+
+    for (const file of files) {
+        const filename = file.name || "query.sql";
+
+        if (!filename.toLowerCase().endsWith(".zip")) {
+            expanded.push(file);
+            continue;
+        }
+
+        try {
+            const archiveFiles = readZipTextFiles(
+                await file.arrayBuffer(),
+                (name) => /(^|\/)queries\/.*\.sql$/i.test(name)
+            );
+
+            if (archiveFiles.length === 0) {
+                expanded.push({
+                    name: filename,
+                    importError: "ZIP file does not contain any queries/**/*.sql files.",
+                });
+                continue;
+            }
+
+            expanded.push(...archiveFiles.map((entry) => ({
+                name: entry.name,
+                text: async () => entry.text,
+            })));
+        } catch (error) {
+            expanded.push({
+                name: filename,
+                importError: error.message || "Failed to read ZIP file.",
+            });
+        }
+    }
+
+    return expanded;
+}
+
 export async function planSavedQueryImport(files, existingQueries, mode = "upsert") {
     const importMode = normalizeImportMode(mode);
-    const existingByName = new Map(
+    const existingByIdentity = new Map(
         existingQueries.map((savedQuery) => [
-            normalizeName(savedQuery.name),
+            queryIdentity(savedQuery),
             savedQuery,
         ])
     );
-    const reservedNames = importMode === SAVED_QUERY_IMPORT_MODES.replace
+    const reservedIdentities = importMode === SAVED_QUERY_IMPORT_MODES.replace
         ? new Set()
-        : new Set(existingByName.keys());
-    const seenInputNames = new Set();
+        : new Set(existingByIdentity.keys());
+    const seenInputIdentities = new Set();
     const operations = [];
 
     for (const file of files) {
         const filename = file.name || "query.sql";
+
+        if (file.importError) {
+            operations.push({
+                filename,
+                action: "error",
+                error: file.importError,
+            });
+            continue;
+        }
 
         if (!filename.toLowerCase().endsWith(".sql")) {
             operations.push({
@@ -40,10 +90,12 @@ export async function planSavedQueryImport(files, existingQueries, mode = "upser
         }
 
         try {
-            const parsed = parseSavedQuerySqlFile(await file.text(), filename);
-            const inputKey = normalizeName(parsed.name);
+            const parsed = parseSavedQuerySqlFile(await file.text(), filename, {
+                requireMetadata: true,
+            });
+            const inputKey = queryIdentity(parsed);
 
-            if (seenInputNames.has(inputKey) && importMode !== SAVED_QUERY_IMPORT_MODES.copy) {
+            if (seenInputIdentities.has(inputKey) && importMode !== SAVED_QUERY_IMPORT_MODES.copy) {
                 operations.push({
                     filename,
                     name: parsed.name,
@@ -53,11 +105,11 @@ export async function planSavedQueryImport(files, existingQueries, mode = "upser
                 continue;
             }
 
-            seenInputNames.add(inputKey);
+            seenInputIdentities.add(inputKey);
 
             if (importMode === SAVED_QUERY_IMPORT_MODES.copy) {
-                const finalName = uniqueCopyName(parsed.name, reservedNames);
-                reservedNames.add(normalizeName(finalName));
+                const finalName = uniqueCopyName(parsed, reservedIdentities);
+                reservedIdentities.add(queryIdentity({ ...parsed, name: finalName }));
                 operations.push({
                     filename,
                     name: finalName,
@@ -69,7 +121,7 @@ export async function planSavedQueryImport(files, existingQueries, mode = "upser
             }
 
             if (importMode === SAVED_QUERY_IMPORT_MODES.create) {
-                if (existingByName.has(inputKey) || reservedNames.has(inputKey)) {
+                if (existingByIdentity.has(inputKey) || reservedIdentities.has(inputKey)) {
                     operations.push({
                         filename,
                         name: parsed.name,
@@ -79,7 +131,7 @@ export async function planSavedQueryImport(files, existingQueries, mode = "upser
                     continue;
                 }
 
-                reservedNames.add(inputKey);
+                reservedIdentities.add(inputKey);
                 operations.push({
                     filename,
                     name: parsed.name,
@@ -90,8 +142,8 @@ export async function planSavedQueryImport(files, existingQueries, mode = "upser
             }
 
             if (importMode === SAVED_QUERY_IMPORT_MODES.replace) {
-                const finalName = uniqueCopyName(parsed.name, reservedNames, false);
-                reservedNames.add(normalizeName(finalName));
+                const finalName = uniqueCopyName(parsed, reservedIdentities, false);
+                reservedIdentities.add(queryIdentity({ ...parsed, name: finalName }));
                 operations.push({
                     filename,
                     name: finalName,
@@ -102,7 +154,7 @@ export async function planSavedQueryImport(files, existingQueries, mode = "upser
                 continue;
             }
 
-            const existing = existingByName.get(inputKey);
+            const existing = existingByIdentity.get(inputKey);
             operations.push({
                 filename,
                 name: parsed.name,
@@ -110,7 +162,7 @@ export async function planSavedQueryImport(files, existingQueries, mode = "upser
                 existingId: existing?.id,
                 data: parsed,
             });
-            reservedNames.add(inputKey);
+            reservedIdentities.add(inputKey);
         } catch (error) {
             operations.push({
                 filename,
@@ -120,10 +172,20 @@ export async function planSavedQueryImport(files, existingQueries, mode = "upser
         }
     }
 
+    const replaceDatabaseNames = importMode === SAVED_QUERY_IMPORT_MODES.replace
+        ? uniqueDatabaseNames(operations
+            .filter((operation) => operation.action === "created")
+            .map((operation) => operation.data.databaseName))
+        : [];
+    const replaceDatabaseKeys = new Set(replaceDatabaseNames.map(normalizeDatabaseName));
+
     return {
         mode: importMode,
         willReplaceExisting: importMode === SAVED_QUERY_IMPORT_MODES.replace,
-        replaceCount: importMode === SAVED_QUERY_IMPORT_MODES.replace ? existingQueries.length : 0,
+        replaceCount: importMode === SAVED_QUERY_IMPORT_MODES.replace
+            ? existingQueries.filter((query) => replaceDatabaseKeys.has(normalizeDatabaseName(query.databaseName))).length
+            : 0,
+        replaceDatabaseNames,
         summary: summarizeOperations(operations),
         operations,
     };
@@ -146,22 +208,39 @@ function normalizeName(name) {
     return String(name || "").trim().toLowerCase();
 }
 
-function uniqueCopyName(name, reservedNames, alwaysCopy = true) {
-    const trimmedName = String(name || "Imported Query").trim() || "Imported Query";
-    const baseKey = normalizeName(trimmedName);
+function normalizeDatabaseName(databaseName) {
+    return String(databaseName || "").trim().toLowerCase();
+}
 
-    if (!alwaysCopy && !reservedNames.has(baseKey)) {
+function uniqueDatabaseNames(databaseNames) {
+    const byKey = new Map();
+    for (const databaseName of databaseNames) {
+        const normalized = String(databaseName || "").trim() || null;
+        byKey.set(normalizeDatabaseName(normalized), normalized);
+    }
+    return [...byKey.values()];
+}
+
+function queryIdentity(query) {
+    return `${normalizeDatabaseName(query.databaseName)}\u0000${normalizeName(query.name)}`;
+}
+
+function uniqueCopyName(query, reservedIdentities, alwaysCopy = true) {
+    const trimmedName = String(query.name || "Imported Query").trim() || "Imported Query";
+    const baseKey = queryIdentity({ ...query, name: trimmedName });
+
+    if (!alwaysCopy && !reservedIdentities.has(baseKey)) {
         return trimmedName;
     }
 
-    if (alwaysCopy && !reservedNames.has(baseKey)) {
+    if (alwaysCopy && !reservedIdentities.has(baseKey)) {
         return trimmedName;
     }
 
     let suffix = 2;
     let candidate = `${trimmedName} (${suffix})`;
 
-    while (reservedNames.has(normalizeName(candidate))) {
+    while (reservedIdentities.has(queryIdentity({ ...query, name: candidate }))) {
         suffix += 1;
         candidate = `${trimmedName} (${suffix})`;
     }

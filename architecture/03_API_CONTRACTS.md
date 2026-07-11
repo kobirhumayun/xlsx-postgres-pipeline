@@ -93,12 +93,14 @@ The zip contains:
 The JSON file is the canonical machine-readable schema context. Markdown and
 SQL files are generated for human and AI-agent readability.
 
+ZIP export responses use streaming DEFLATE compression.
+
 ## Repository Bundle Export
 
 `POST /api/repository/export`
 
-Exports a Git-ready ZIP containing the selected database schema, every saved
-query grouped by its `databaseName`, a machine-readable manifest, and query
+Exports a Git-ready ZIP containing compact selected-database schema context,
+saved queries for that database, a machine-readable manifest, and query
 authoring instructions for AI agents. No table rows are included.
 
 Body:
@@ -110,7 +112,8 @@ Body:
   "includeRowCounts": true,
   "includeIndexes": true,
   "includeConstraints": true,
-  "includeViews": false
+  "includeViews": false,
+  "includeUnassignedQueries": true
 }
 ```
 
@@ -119,15 +122,15 @@ The ZIP contains:
 - `README.md`
 - `AGENTS.md`
 - `manifest.json`
-- `schema/database.schema.json`
-- `schema/database.schema.md`
-- `schema/tables/*`
+- `schema/catalog.md`
+- `schema/tables/*.sql`
 - `queries/<database>/*.sql`
 - `queries/unassigned/*.sql` when saved queries have no database name
 
-The schema files omit volatile generation timestamps for cleaner Git diffs.
-The timestamp and warnings about unassigned or cross-database queries are
-recorded in `manifest.json`.
+The catalog provides a compact relation and foreign-key index. Per-table SQL is
+the canonical schema context for agents. `manifest.json` records the generation
+timestamp, schema fingerprint, counts, export options, and unassigned-query
+warnings. Queries assigned to other databases are excluded.
 
 ## Flexible Import
 
@@ -228,7 +231,7 @@ Previews an import without writing to the database.
 
 Multipart form fields:
 
-- `files`: one or more `.sql` files.
+- `files`: one or more versioned `.sql` files or repository `.zip` files.
 - `mode`: optional import mode.
 
 Supported import modes:
@@ -236,7 +239,8 @@ Supported import modes:
 - `upsert`: create new queries and update matching names.
 - `create`: create new queries and skip matching names.
 - `copy`: create imported queries as copies, adding numeric suffixes when needed.
-- `replace`: delete existing saved queries and create the valid imported queries.
+- `replace`: replace saved queries only in database scopes represented by the
+  valid imported files.
 
 The response includes counts for created, updated, skipped, and errored files,
 plus per-file actions.
@@ -250,9 +254,12 @@ Multipart form fields:
 - `files`: one or more `.sql` files.
 - `mode`: optional import mode. Defaults to `upsert`.
 
-The import parser reads leading `-- xpp:*` metadata comments and saves the
-remaining SQL body. Imported SQL is not executed. `replace` imports are rejected
-when any selected file has a parse error.
+The import parser requires `name` and version `1` metadata and saves the
+remaining SQL body. Current exports also write `databaseName` and `description`;
+empty values are allowed. Conflicts use database name plus query name. ZIP imports
+read only `queries/**/*.sql`, so generated schema SQL cannot be imported as a
+saved query. Imported SQL is not executed. `replace` imports are rejected when
+any selected file has a parse error.
 
 ## Backup
 

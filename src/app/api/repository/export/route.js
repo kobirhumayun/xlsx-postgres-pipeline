@@ -1,7 +1,7 @@
 import { getDbPool, prisma } from "@/lib/db";
 import { collectDatabaseSchema } from "@/lib/schema-export";
 import { repositoryBundleFiles } from "@/lib/repository-bundle";
-import { createZip } from "@/lib/zip";
+import { createZipStream } from "@/lib/zip";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -14,6 +14,7 @@ const repositoryExportSchema = z.object({
     includeIndexes: z.boolean().optional(),
     includeConstraints: z.boolean().optional(),
     includeViews: z.boolean().optional(),
+    includeUnassignedQueries: z.boolean().optional(),
 });
 
 export async function POST(request) {
@@ -31,25 +32,36 @@ export async function POST(request) {
         }
 
         const options = parsed.data;
+        const includeUnassignedQueries = options.includeUnassignedQueries !== false;
         const pool = getDbPool(options.databaseName);
         client = await pool.connect();
 
         const [schema, savedQueries] = await Promise.all([
             collectDatabaseSchema(client, options),
             prisma.savedQuery.findMany({
+                where: includeUnassignedQueries
+                    ? {
+                        OR: [
+                            { databaseName: options.databaseName },
+                            { databaseName: null },
+                            { databaseName: "" },
+                        ],
+                    }
+                    : { databaseName: options.databaseName },
                 orderBy: [{ name: "asc" }, { updatedAt: "desc" }],
             }),
         ]);
         const generatedAt = new Date();
-        const { files } = repositoryBundleFiles(schema, savedQueries, generatedAt);
-        const zip = createZip(files);
+        const { files } = repositoryBundleFiles(schema, savedQueries, generatedAt, {
+            includeUnassignedQueries,
+        });
+        const zip = createZipStream(files);
         const filename = `${safeFilename(schema.database)}-query-context-${timestampForFilename(generatedAt)}.zip`;
 
         return new NextResponse(zip, {
             headers: {
                 "Content-Type": "application/zip",
                 "Content-Disposition": `attachment; filename="${filename}"`,
-                "Content-Length": String(zip.length),
             },
         });
     } catch (error) {

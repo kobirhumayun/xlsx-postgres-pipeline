@@ -40,14 +40,15 @@ Purpose:
 
 - Browse databases and tables.
 - Export selected database schema metadata for AI-agent context.
-- Export a Git-ready repository bundle containing schema metadata, all saved
-  queries, a manifest, and AI-agent instructions.
+- Export a Git-ready repository bundle containing compact schema context,
+  selected-database queries, a manifest, and AI-agent instructions.
 - Write SQL in a Monaco editor.
 - Run queries and preview results.
 - Export query results.
 - Save, edit, load, and delete saved queries.
 - Export all, selected, or individual saved queries as `.sql` files in a `.zip`.
-- Import multiple saved queries from `.sql` files by picker or drag and drop.
+- Import multiple saved queries from `.sql` files or a repository ZIP by picker
+  or drag and drop.
 - Keep recent query history in browser local storage.
 
 Primary API routes:
@@ -68,15 +69,16 @@ Important UI behavior:
 - Schema export is available from the Schema tab after selecting a database.
 - Schema export can include estimated row counts, indexes, constraints, and
   views. It does not include table data.
-- Repository bundle export uses the same schema options and groups every saved
-  query by its database metadata. Queries without a database are placed in an
-  `unassigned` folder.
+- Repository bundle export uses the same schema options and includes queries
+  assigned to the selected database. Unassigned queries can optionally be
+  included in an `unassigned` folder.
 - Export only requires query text in the current UI, but the API still receives
   the selected database when present.
 - Query history is local to the browser.
 - Saved-query file import previews per-file actions before applying changes.
-- Saved-query file import supports updating matching names, creating only,
-  importing copies, and replacing all saved queries.
+- Saved-query file import matches database plus query name and supports updates,
+  create-only imports, copies, and database-scoped replacement.
+- Repository ZIP imports read only `queries/**/*.sql` and ignore schema SQL.
 - Imported SQL is saved only and is not executed.
 
 ## Backup
