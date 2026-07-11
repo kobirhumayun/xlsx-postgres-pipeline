@@ -410,12 +410,12 @@ async function fetchConstraints(client, relationOids) {
         name: row.name,
         type: constraintType(row.type),
         definition: row.definition,
-        columns: row.columns || [],
+        columns: toTextArray(row.columns),
         references: row.referenced_table
             ? {
                 schema: row.referenced_schema,
                 table: row.referenced_table,
-                columns: row.referenced_columns || [],
+                columns: toTextArray(row.referenced_columns),
             }
             : null,
     }));
@@ -516,4 +516,58 @@ function slugify(value) {
 
 function escapeMarkdownCell(value) {
     return String(value ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+
+function toTextArray(value) {
+    if (Array.isArray(value)) {
+        return value.map((item) => String(item));
+    }
+
+    if (!value) {
+        return [];
+    }
+
+    const text = String(value);
+    if (!text.startsWith("{") || !text.endsWith("}")) {
+        return [text];
+    }
+
+    const items = [];
+    let current = "";
+    let inQuotes = false;
+    let isEscaped = false;
+
+    for (let index = 1; index < text.length - 1; index += 1) {
+        const char = text[index];
+
+        if (isEscaped) {
+            current += char;
+            isEscaped = false;
+            continue;
+        }
+
+        if (char === "\\") {
+            isEscaped = true;
+            continue;
+        }
+
+        if (char === '"') {
+            inQuotes = !inQuotes;
+            continue;
+        }
+
+        if (char === "," && !inQuotes) {
+            items.push(current);
+            current = "";
+            continue;
+        }
+
+        current += char;
+    }
+
+    if (current || text.length > 2) {
+        items.push(current);
+    }
+
+    return items.filter((item) => item !== "NULL");
 }
