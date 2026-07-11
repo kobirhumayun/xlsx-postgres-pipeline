@@ -93,6 +93,42 @@ The zip contains:
 The JSON file is the canonical machine-readable schema context. Markdown and
 SQL files are generated for human and AI-agent readability.
 
+## Repository Bundle Export
+
+`POST /api/repository/export`
+
+Exports a Git-ready ZIP containing the selected database schema, every saved
+query grouped by its `databaseName`, a machine-readable manifest, and query
+authoring instructions for AI agents. No table rows are included.
+
+Body:
+
+```json
+{
+  "databaseName": "required database name",
+  "schemas": ["optional schema names"],
+  "includeRowCounts": true,
+  "includeIndexes": true,
+  "includeConstraints": true,
+  "includeViews": false
+}
+```
+
+The ZIP contains:
+
+- `README.md`
+- `AGENTS.md`
+- `manifest.json`
+- `schema/database.schema.json`
+- `schema/database.schema.md`
+- `schema/tables/*`
+- `queries/<database>/*.sql`
+- `queries/unassigned/*.sql` when saved queries have no database name
+
+The schema files omit volatile generation timestamps for cleaner Git diffs.
+The timestamp and warnings about unassigned or cross-database queries are
+recorded in `manifest.json`.
+
 ## Flexible Import
 
 `POST /api/import/flexible`

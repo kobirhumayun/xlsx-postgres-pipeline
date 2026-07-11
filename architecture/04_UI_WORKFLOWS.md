@@ -40,6 +40,8 @@ Purpose:
 
 - Browse databases and tables.
 - Export selected database schema metadata for AI-agent context.
+- Export a Git-ready repository bundle containing schema metadata, all saved
+  queries, a manifest, and AI-agent instructions.
 - Write SQL in a Monaco editor.
 - Run queries and preview results.
 - Export query results.
@@ -52,6 +54,7 @@ Primary API routes:
 
 - `GET /api/structure`
 - `POST /api/schema/export`
+- `POST /api/repository/export`
 - `POST /api/query/run`
 - `POST /api/query/export`
 - `/api/saved-queries`
@@ -65,6 +68,9 @@ Important UI behavior:
 - Schema export is available from the Schema tab after selecting a database.
 - Schema export can include estimated row counts, indexes, constraints, and
   views. It does not include table data.
+- Repository bundle export uses the same schema options and groups every saved
+  query by its database metadata. Queries without a database are placed in an
+  `unassigned` folder.
 - Export only requires query text in the current UI, but the API still receives
   the selected database when present.
 - Query history is local to the browser.

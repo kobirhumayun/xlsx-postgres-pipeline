@@ -15,6 +15,7 @@ include built-in authentication.
 - Raw SQL editor with preview results.
 - Excel export for query results.
 - Saved SQL queries.
+- Git-friendly query and database-schema context bundles for AI agents.
 - Manual backup and restore UI.
 - Dockerized development and production flows.
 
@@ -33,6 +34,74 @@ Documentation read order:
 
 The codebase is the source of truth. Documentation should be updated whenever
 the implementation changes.
+
+## AI Query Context Repository
+
+From the Query page, select a database, choose **Export Schema**, and then
+choose **Repository Bundle**. The downloaded ZIP is ready to extract into a Git
+repository. It contains:
+
+```text
+README.md
+AGENTS.md
+manifest.json
+schema/
+  database.schema.json
+  database.schema.md
+  tables/
+queries/
+  <database>/
+  unassigned/
+```
+
+`schema/database.schema.json` is the canonical database structure. Files under
+`schema/` are generated and must not be edited manually. Saved queries are
+grouped by their `databaseName`; queries without a database are placed under
+`queries/unassigned/` and reported in `manifest.json`.
+
+### Instructions For AI Agents
+
+Before writing SQL, read `manifest.json`, `schema/database.schema.json`, the
+relevant files under `schema/tables/`, and existing queries for the target
+database.
+
+- Use only tables and columns present in `schema/database.schema.json`.
+- Prefer declared foreign keys when joining tables.
+- Do not invent relationships. Ask for clarification or document an assumption
+  in the query description when no foreign key establishes the relationship.
+- Create one query per `.sql` file under `queries/<database>/`.
+- Use a lowercase kebab-case filename, such as `customer-order-summary.sql`.
+- Keep all `-- xpp:*` metadata comments together at the beginning of the file.
+- Do not wrap SQL in Markdown code fences.
+- Prefer explicit selected columns over `SELECT *`.
+- Generate read-only SQL unless the request explicitly requires DML or DDL.
+- Do not execute generated queries. Importing a query through the application
+  saves it but does not execute it.
+
+Every new query file must use this structure:
+
+```sql
+-- xpp:name: Customer Order Summary
+-- xpp:version: 1
+-- xpp:databaseName: application_database
+-- xpp:description: Summarizes order totals for each customer.
+
+SELECT
+    c.id,
+    c.name,
+    SUM(o.total_amount) AS total_order_amount
+FROM public.customers AS c
+JOIN public.orders AS o
+    ON o.customer_id = c.id
+GROUP BY
+    c.id,
+    c.name;
+```
+
+The supported metadata fields are `name`, `version`, `databaseName`, and
+`description`. End executable SQL statements with semicolons. The generated
+bundle also contains these instructions in its own `README.md` and a concise
+`AGENTS.md`, so an AI agent can work directly from the extracted repository.
 
 ## Prerequisites
 

@@ -92,11 +92,17 @@ export async function collectDatabaseSchema(client, options = {}) {
 }
 
 export function schemaReadme(schema) {
-    return [
+    const lines = [
         "# Database Schema Export",
         "",
         `Database: ${schema.database}`,
-        `Exported at: ${schema.exportedAt}`,
+    ];
+
+    if (schema.exportedAt) {
+        lines.push(`Exported at: ${schema.exportedAt}`);
+    }
+
+    lines.push(
         "",
         "This folder contains metadata-only database structure context for humans and AI agents.",
         "No table data or sample rows are included.",
@@ -108,18 +114,22 @@ export function schemaReadme(schema) {
         "- `tables/*.md`: per-table Markdown summaries.",
         "- `tables/*.sql`: approximate DDL context for reading, not restore-grade dumps.",
         "",
-    ].join("\n");
+    );
+
+    return lines.join("\n");
 }
 
 export function schemaMarkdown(schema) {
     const lines = [
         `# Database Schema: ${schema.database}`,
         "",
-        `Exported at: ${schema.exportedAt}`,
-        "",
-        "This export contains metadata only. It does not include table data.",
-        "",
     ];
+
+    if (schema.exportedAt) {
+        lines.push(`Exported at: ${schema.exportedAt}`, "");
+    }
+
+    lines.push("This export contains metadata only. It does not include table data.", "");
 
     for (const schemaEntry of schema.schemas) {
         lines.push(`## Schema: ${schemaEntry.name}`, "");

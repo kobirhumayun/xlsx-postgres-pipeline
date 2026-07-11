@@ -28,6 +28,7 @@ export default function QueryPage() {
     const [error, setError] = useState(null);
     const [isExporting, setIsExporting] = useState(false);
     const [isExportingSchema, setIsExportingSchema] = useState(false);
+    const [isExportingRepository, setIsExportingRepository] = useState(false);
 
     // Schema Browser State
     const [dbList, setDbList] = useState([]);
@@ -324,6 +325,47 @@ export default function QueryPage() {
         }
     };
 
+    const handleExportRepository = async (options) => {
+        if (!options.databaseName) {
+            toast.error("Select a database before exporting a repository bundle");
+            return;
+        }
+
+        setIsExportingRepository(true);
+        const toastId = toast.loading("Building repository bundle...");
+
+        try {
+            const response = await fetch("/api/repository/export", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(options),
+            });
+
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.error || "Failed to export repository bundle");
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filenameFromContentDisposition(
+                response.headers.get("content-disposition")
+            ) || "query-context.zip";
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            toast.success("Repository bundle exported", { id: toastId });
+        } catch (err) {
+            console.error(err);
+            toast.error(err.message || "Failed to export repository bundle", { id: toastId });
+        } finally {
+            setIsExportingRepository(false);
+        }
+    };
+
     const handleExportSavedQueries = async (ids = null) => {
         const exportIds = Array.isArray(ids) && ids.length > 0
             ? ids
@@ -494,6 +536,8 @@ export default function QueryPage() {
                 onInsertTable={insertTableName}
                 onExportSchema={handleExportSchema}
                 isExportingSchema={isExportingSchema}
+                onExportRepository={handleExportRepository}
+                isExportingRepository={isExportingRepository}
                 // Saved Queries Props
                 savedQueries={savedQueries}
                 onDeleteQuery={handleDeleteQuery}

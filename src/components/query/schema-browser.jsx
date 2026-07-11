@@ -1,4 +1,4 @@
-import { Database, Table, Search, Download } from "lucide-react";
+import { Archive, Database, Table, Search, Download } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,6 +21,8 @@ export function SchemaBrowser({
     onInsertTable,
     onExportSchema = () => {},
     isExportingSchema = false,
+    onExportRepository = () => {},
+    isExportingRepository = false,
 }) {
     const [searchQuery, setSearchQuery] = useState("");
     const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
@@ -123,8 +125,11 @@ export function SchemaBrowser({
                                 id="schema-filter"
                                 value={schemaFilter}
                                 onChange={(event) => setSchemaFilter(event.target.value)}
-                                placeholder="All non-system schemas"
+                                placeholder="e.g. public, reporting"
                             />
+                            <p className="text-xs text-zinc-500">
+                                Leave blank to include all non-system schemas.
+                            </p>
                         </div>
 
                         <div className="grid gap-3 rounded-md border border-zinc-200 p-3">
@@ -155,9 +160,31 @@ export function SchemaBrowser({
                         <Button
                             variant="outline"
                             onClick={() => setIsExportDialogOpen(false)}
-                            disabled={isExportingSchema}
+                            disabled={isExportingSchema || isExportingRepository}
                         >
                             Cancel
+                        </Button>
+                        <Button
+                            variant="outline"
+                            onClick={async () => {
+                                await onExportRepository({
+                                    databaseName: selectedDb,
+                                    schemas: schemaFilter
+                                        .split(",")
+                                        .map((schema) => schema.trim())
+                                        .filter(Boolean),
+                                    includeRowCounts,
+                                    includeIndexes,
+                                    includeConstraints,
+                                    includeViews,
+                                });
+                                setIsExportDialogOpen(false);
+                            }}
+                            disabled={!selectedDb || isExportingSchema || isExportingRepository}
+                            title="Export schema, saved queries, and AI agent instructions"
+                        >
+                            <Archive className="h-4 w-4" />
+                            {isExportingRepository ? "Bundling..." : "Repository Bundle"}
                         </Button>
                         <Button
                             onClick={async () => {
@@ -174,7 +201,7 @@ export function SchemaBrowser({
                                 });
                                 setIsExportDialogOpen(false);
                             }}
-                            disabled={!selectedDb || isExportingSchema}
+                            disabled={!selectedDb || isExportingSchema || isExportingRepository}
                         >
                             {isExportingSchema ? "Exporting..." : "Export"}
                         </Button>
