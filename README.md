@@ -58,6 +58,15 @@ queries/
 manually. The bundle includes queries for the selected database and, by
 default, queries without a database under `queries/unassigned/`.
 
+The extracted repository is a SQL workspace for purifying related source data
+and producing concrete report tables. Agents use prompt-supplied business rules
+to normalize, compare, cross-match, deduplicate, reconcile, and combine source
+records. Query files can be read-only SQL or multi-statement pipeline steps.
+Prompts should identify inputs, matching and normalization rules, precedence,
+output grain, unmatched handling, report destination, refresh strategy, and
+required reconciliation totals. Agents are instructed to ask when a required
+business decision cannot be proven from the repository.
+
 ### Instructions For AI Agents
 
 Before writing SQL, read `manifest.json` and `schema/catalog.md`, then open only
@@ -70,32 +79,51 @@ database.
 - Do not invent relationships. Ask for clarification or document an assumption
   in the query description when no foreign key establishes the relationship.
 - Create one query per `.sql` file under `queries/<database>/`.
-- Use a lowercase kebab-case filename, such as `customer-order-summary.sql`.
+- Use ordered filenames for dependent pipeline steps, such as
+  `010-normalize-source.sql`, `020-cross-match.sql`, and
+  `030-build-final-report.sql`.
 - Keep all `-- xpp:*` metadata comments together at the beginning of the file.
 - Do not wrap SQL in Markdown code fences.
 - Prefer explicit selected columns over `SELECT *`.
-- Generate read-only SQL unless the request explicitly requires DML or DDL.
+- Treat source tables as read-only unless the prompt explicitly authorizes
+  source updates.
+- Do not assume matching rules, output grain, duplicate precedence, null
+  handling, or report refresh strategy; ask when these are ambiguous.
+- Create, use, and drop temporary tables in the same file because separate Run
+  actions do not share a database connection.
+- Use schema-qualified persistent tables and transaction boundaries for
+  prompt-approved multi-statement transformations.
+- Add reconciliation checks for source, matched, unmatched, rejected, and final
+  report row counts when relevant.
 - Do not execute generated queries. Importing a query through the application
   saves it but does not execute it.
 
 Every new query file must use this structure:
 
 ```sql
--- xpp:name: Customer Order Summary
+-- xpp:name: 010 - Purify Customer Orders
 -- xpp:version: 1
 -- xpp:databaseName: application_database
--- xpp:description: Summarizes order totals for each customer.
+-- xpp:description: Normalizes and matches customer orders, then refreshes the approved report table.
 
-SELECT
-    c.id,
-    c.name,
-    SUM(o.total_amount) AS total_order_amount
-FROM public.customers AS c
-JOIN public.orders AS o
-    ON o.customer_id = c.id
-GROUP BY
-    c.id,
-    c.name;
+-- Purpose: State the business outcome.
+-- Inputs: List every table read.
+-- Output: Name the report table, or say "result set only".
+-- Refresh strategy: append, truncate/reload, upsert, replace, or none.
+-- Business rules: State matching precedence, exclusions, and assumptions.
+
+BEGIN;
+
+DROP TABLE IF EXISTS pg_temp.tmp_working_set;
+CREATE TEMP TABLE tmp_working_set AS
+SELECT ...;
+
+-- Apply prompt-approved matching and report refresh logic here.
+-- Add reconciliation checks required by the prompt.
+
+DROP TABLE IF EXISTS pg_temp.tmp_working_set;
+
+COMMIT;
 ```
 
 The required metadata fields are `name`, `version`, `databaseName`, and

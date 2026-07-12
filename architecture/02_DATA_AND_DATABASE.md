@@ -83,6 +83,12 @@ Repository bundles use a compact `schema/catalog.md` plus one context DDL file
 per relation under `schema/tables/`. The standalone schema export retains JSON
 and Markdown representations for compatibility with external machine tooling.
 
+The generated repository instructions define query files as independently
+executable data-purification or reporting steps. Temporary tables are scoped to
+one SQL file and one Run request because query requests do not share database
+connections. Persistent intermediate and report tables must be schema-qualified
+and use a prompt-defined refresh strategy.
+
 ## Flexible Import Tables
 
 Flexible import writes into user-selected PostgreSQL tables.

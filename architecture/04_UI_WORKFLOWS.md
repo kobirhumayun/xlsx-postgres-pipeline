@@ -80,6 +80,9 @@ Important UI behavior:
   create-only imports, copies, and database-scoped replacement.
 - Repository ZIP imports read only `queries/**/*.sql` and ignore schema SQL.
 - Imported SQL is saved only and is not executed.
+- Generated repository instructions support ordered, multi-statement data
+  purification and reporting steps. Temporary tables must be created, consumed,
+  and dropped within one file because Run requests use independent connections.
 
 ## Backup
 

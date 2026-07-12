@@ -118,6 +118,15 @@ test("repository bundle uses compact schema files and a fingerprint", () => {
     assert.ok(!names.includes("schema/database.schema.json"));
     assert.ok(!names.some((name) => name.endsWith(".md") && name.startsWith("schema/tables/")));
     assert.match(manifest.schemaFingerprint, /^[a-f0-9]{64}$/);
+    assert.equal(manifest.purpose, "postgresql-data-purification-and-reporting");
+
+    const readme = files.find((file) => file.name === "README.md").data;
+    const agents = files.find((file) => file.name === "AGENTS.md").data;
+    assert.match(readme, /temporary table must be created, used, and dropped in the same file/i);
+    assert.match(readme, /Refresh strategy: append, truncate\/reload, upsert, replace, or none/);
+    assert.match(readme, /Treat source tables as read-only/i);
+    assert.match(readme, /Prompt Contract/);
+    assert.match(agents, /connections are not shared across runs/i);
 });
 
 test("table context emits valid identity and view clauses", () => {
