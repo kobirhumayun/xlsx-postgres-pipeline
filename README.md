@@ -15,6 +15,7 @@ include built-in authentication.
 - Raw SQL editor with preview results.
 - Excel export for query results.
 - Saved SQL queries.
+- Git-friendly query and database-schema context bundles for AI agents.
 - Manual backup and restore UI.
 - Dockerized development and production flows.
 
@@ -33,6 +34,108 @@ Documentation read order:
 
 The codebase is the source of truth. Documentation should be updated whenever
 the implementation changes.
+
+## AI Query Context Repository
+
+From the Query page, select a database, choose **Export Schema**, and then
+choose **Repository Bundle**. The downloaded ZIP is ready to extract into a Git
+repository. It contains:
+
+```text
+README.md
+AGENTS.md
+manifest.json
+schema/
+  catalog.md
+  tables/
+queries/
+  <database>/
+  unassigned/
+```
+
+`schema/catalog.md` is the compact table and relationship index. Files under
+`schema/tables/` are the canonical structure context and must not be edited
+manually. The bundle includes queries for the selected database and, by
+default, queries without a database under `queries/unassigned/`.
+
+The extracted repository is a SQL workspace for purifying related source data
+and producing concrete report tables. Agents use prompt-supplied business rules
+to normalize, compare, cross-match, deduplicate, reconcile, and combine source
+records. Query files can be read-only SQL or multi-statement pipeline steps.
+Prompts should identify inputs, matching and normalization rules, precedence,
+output grain, unmatched handling, report destination, refresh strategy, and
+required reconciliation totals. Agents are instructed to ask when a required
+business decision cannot be proven from the repository.
+
+### Instructions For AI Agents
+
+Before writing SQL, read `manifest.json` and `schema/catalog.md`, then open only
+the relevant files under `schema/tables/` and existing queries for the target
+database.
+
+- Use only tables and columns present in the relevant `schema/tables/*.sql`
+  files.
+- Prefer declared foreign keys when joining tables.
+- Do not invent relationships. Ask for clarification or document an assumption
+  in the query description when no foreign key establishes the relationship.
+- Create one query per `.sql` file under `queries/<database>/`.
+- Use ordered filenames for dependent pipeline steps, such as
+  `010-normalize-source.sql`, `020-cross-match.sql`, and
+  `030-build-final-report.sql`.
+- Keep all `-- xpp:*` metadata comments together at the beginning of the file.
+- Do not wrap SQL in Markdown code fences.
+- Prefer explicit selected columns over `SELECT *`.
+- Treat source tables as read-only unless the prompt explicitly authorizes
+  source updates.
+- Do not assume matching rules, output grain, duplicate precedence, null
+  handling, or report refresh strategy; ask when these are ambiguous.
+- Create, use, and drop temporary tables in the same file because separate Run
+  actions do not share a database connection.
+- Use schema-qualified persistent tables and transaction boundaries for
+  prompt-approved multi-statement transformations.
+- Add reconciliation checks for source, matched, unmatched, rejected, and final
+  report row counts when relevant.
+- Do not execute generated queries. Importing a query through the application
+  saves it but does not execute it.
+
+Every new query file must use this structure:
+
+```sql
+-- xpp:name: 010 - Purify Customer Orders
+-- xpp:version: 1
+-- xpp:databaseName: application_database
+-- xpp:description: Normalizes and matches customer orders, then refreshes the approved report table.
+
+-- Purpose: State the business outcome.
+-- Inputs: List every table read.
+-- Output: Name the report table, or say "result set only".
+-- Refresh strategy: append, truncate/reload, upsert, replace, or none.
+-- Business rules: State matching precedence, exclusions, and assumptions.
+
+BEGIN;
+
+DROP TABLE IF EXISTS pg_temp.tmp_working_set;
+CREATE TEMP TABLE tmp_working_set AS
+SELECT ...;
+
+-- Apply prompt-approved matching and report refresh logic here.
+-- Add reconciliation checks required by the prompt.
+
+DROP TABLE IF EXISTS pg_temp.tmp_working_set;
+
+COMMIT;
+```
+
+The required metadata fields are `name`, `version`, `databaseName`, and
+`description`. Empty database and description values are allowed, but all four
+metadata lines must be present. End executable SQL statements with semicolons. The generated
+bundle also contains these instructions in its own `README.md` and a concise
+`AGENTS.md`, so an AI agent can work directly from the extracted repository.
+
+Import accepts individual `.sql` files or a repository `.zip`. ZIP imports
+read only `queries/**/*.sql`; generated schema SQL is ignored. Import conflicts
+are matched by database and query name. The replacement mode deletes only
+queries in the database scopes represented by the imported files.
 
 ## Prerequisites
 

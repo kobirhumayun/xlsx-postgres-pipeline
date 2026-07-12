@@ -30,12 +30,21 @@ export async function POST(request) {
             );
         }
 
+        const normalizedDatabaseName = normalizeDatabaseName(databaseName);
+        const duplicate = await findDuplicate(name, normalizedDatabaseName);
+        if (duplicate) {
+            return NextResponse.json(
+                { error: "A saved query with this name already exists for the database." },
+                { status: 409 }
+            );
+        }
+
         const savedQuery = await prisma.savedQuery.create({
             data: {
-                name,
+                name: name.trim(),
                 description,
                 query,
-                databaseName,
+                databaseName: normalizedDatabaseName,
             },
         });
 
@@ -61,13 +70,30 @@ export async function PUT(request) {
             );
         }
 
+
+        if (!name || !query) {
+            return NextResponse.json(
+                { error: "Name and query are required" },
+                { status: 400 }
+            );
+        }
+
+        const normalizedDatabaseName = normalizeDatabaseName(databaseName);
+        const duplicate = await findDuplicate(name, normalizedDatabaseName, id);
+        if (duplicate) {
+            return NextResponse.json(
+                { error: "A saved query with this name already exists for the database." },
+                { status: 409 }
+            );
+        }
+
         const updatedQuery = await prisma.savedQuery.update({
             where: { id },
             data: {
-                name,
+                name: name.trim(),
                 description,
                 query,
-                databaseName,
+                databaseName: normalizedDatabaseName,
             },
         });
 
@@ -79,6 +105,27 @@ export async function PUT(request) {
             { status: 500 }
         );
     }
+}
+
+function normalizeDatabaseName(databaseName) {
+    const normalized = String(databaseName || "").trim();
+    return normalized || null;
+}
+
+async function findDuplicate(name, databaseName, excludedId) {
+    return prisma.savedQuery.findFirst({
+        where: {
+            id: excludedId ? { not: excludedId } : undefined,
+            name: {
+                equals: name.trim(),
+                mode: "insensitive",
+            },
+            OR: databaseName
+                ? [{ databaseName }]
+                : [{ databaseName: null }, { databaseName: "" }],
+        },
+        select: { id: true },
+    });
 }
 
 export async function DELETE(request) {

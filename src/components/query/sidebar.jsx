@@ -11,12 +11,22 @@ export function Sidebar({
     selectedDb,
     setSelectedDb,
     onInsertTable,
+    onExportSchema,
+    isExportingSchema,
+    onExportRepository,
+    isExportingRepository,
 
     // Saved Queries Props
     savedQueries,
     onDeleteQuery,
     onLoadQuery,
     onEditQuery,
+    onImportSavedQueries,
+    onExportSavedQueries,
+    onExportSelectedSavedQueries,
+    onExportSingleSavedQuery,
+    isImportingSavedQueries,
+    isExportingSavedQueries,
 
     // History Props
     queryHistory,
@@ -94,6 +104,10 @@ export function Sidebar({
                         selectedDb={selectedDb}
                         setSelectedDb={setSelectedDb}
                         onInsertTable={onInsertTable}
+                        onExportSchema={onExportSchema}
+                        isExportingSchema={isExportingSchema}
+                        onExportRepository={onExportRepository}
+                        isExportingRepository={isExportingRepository}
                     />
                 </div>
                 <div className={`absolute inset-0 ${activeTab === "saved" ? "block" : "hidden"}`}>
@@ -102,6 +116,12 @@ export function Sidebar({
                         onDelete={onDeleteQuery}
                         onLoad={onLoadQuery}
                         onEdit={onEditQuery}
+                        onImportFiles={onImportSavedQueries}
+                        onExportAll={onExportSavedQueries}
+                        onExportSelected={onExportSelectedSavedQueries}
+                        onExportQuery={onExportSingleSavedQuery}
+                        isImporting={isImportingSavedQueries}
+                        isExporting={isExportingSavedQueries}
                         compact={true}
                     />
                 </div>

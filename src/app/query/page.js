@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Sidebar } from "@/components/query/sidebar";
 import { QueryEditor } from "@/components/query/query-editor";
 import { ResultsDisplay } from "@/components/query/results-display";
+import { SavedQueryImportDialog } from "@/components/query/saved-query-import-dialog";
 import {
     AlertDialog,
     AlertDialogAction,
@@ -26,6 +27,8 @@ export default function QueryPage() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [isExporting, setIsExporting] = useState(false);
+    const [isExportingSchema, setIsExportingSchema] = useState(false);
+    const [isExportingRepository, setIsExportingRepository] = useState(false);
 
     // Schema Browser State
     const [dbList, setDbList] = useState([]);
@@ -37,6 +40,14 @@ export default function QueryPage() {
     const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
     const [editingQuery, setEditingQuery] = useState(null); // Track which query is being edited
     const [isSaving, setIsSaving] = useState(false);
+    const [isImportingSavedQueries, setIsImportingSavedQueries] = useState(false);
+    const [isExportingSavedQueries, setIsExportingSavedQueries] = useState(false);
+    const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+    const [pendingImportFiles, setPendingImportFiles] = useState([]);
+    const [savedQueryImportMode, setSavedQueryImportMode] = useState("upsert");
+    const [savedQueryImportPreview, setSavedQueryImportPreview] = useState(null);
+    const [savedQueryImportResult, setSavedQueryImportResult] = useState(null);
+    const [isPreviewingSavedQueryImport, setIsPreviewingSavedQueryImport] = useState(false);
 
     // Overwrite Confirmation State
     const [isOverwriteDialogOpen, setIsOverwriteDialogOpen] = useState(false);
@@ -216,6 +227,7 @@ export default function QueryPage() {
         // Duplicate Name Check
         const duplicate = savedQueries.find(sq =>
             sq.name.toLowerCase() === name.trim().toLowerCase() &&
+            (sq.databaseName || "").toLowerCase() === (databaseName || "").trim().toLowerCase() &&
             sq.id !== editingQuery?.id
         );
 
@@ -273,6 +285,213 @@ export default function QueryPage() {
         }
     };
 
+    const handleExportSchema = async (options) => {
+        if (!options.databaseName) {
+            toast.error("Select a database before exporting schema");
+            return;
+        }
+
+        setIsExportingSchema(true);
+        const toastId = toast.loading("Exporting schema metadata...");
+
+        try {
+            const response = await fetch("/api/schema/export", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(options),
+            });
+
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.error || "Failed to export schema");
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filenameFromContentDisposition(
+                response.headers.get("content-disposition")
+            ) || "database-schema.zip";
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            toast.success("Schema exported", { id: toastId });
+        } catch (err) {
+            console.error(err);
+            toast.error(err.message || "Failed to export schema", { id: toastId });
+        } finally {
+            setIsExportingSchema(false);
+        }
+    };
+
+    const handleExportRepository = async (options) => {
+        if (!options.databaseName) {
+            toast.error("Select a database before exporting a repository bundle");
+            return;
+        }
+
+        setIsExportingRepository(true);
+        const toastId = toast.loading("Building repository bundle...");
+
+        try {
+            const response = await fetch("/api/repository/export", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(options),
+            });
+
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.error || "Failed to export repository bundle");
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filenameFromContentDisposition(
+                response.headers.get("content-disposition")
+            ) || "query-context.zip";
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            toast.success("Repository bundle exported", { id: toastId });
+        } catch (err) {
+            console.error(err);
+            toast.error(err.message || "Failed to export repository bundle", { id: toastId });
+        } finally {
+            setIsExportingRepository(false);
+        }
+    };
+
+    const handleExportSavedQueries = async (ids = null) => {
+        const exportIds = Array.isArray(ids) && ids.length > 0
+            ? ids
+            : savedQueries.map((sq) => sq.id);
+
+        if (exportIds.length === 0) {
+            toast.info("No saved queries to export");
+            return;
+        }
+
+        setIsExportingSavedQueries(true);
+        const toastId = toast.loading("Exporting saved queries...");
+
+        try {
+            const response = await fetch("/api/saved-queries/files/export", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ids: exportIds }),
+            });
+
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.error || "Failed to export saved queries");
+            }
+
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filenameFromContentDisposition(
+                response.headers.get("content-disposition")
+            ) || "saved-queries.zip";
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            toast.success("Saved queries exported", { id: toastId });
+        } catch (err) {
+            console.error(err);
+            toast.error(err.message || "Failed to export saved queries", { id: toastId });
+        } finally {
+            setIsExportingSavedQueries(false);
+        }
+    };
+
+    const handleImportSavedQueries = async (files) => {
+        if (files.length === 0) {
+            toast.error("Select one or more files to import");
+            return;
+        }
+
+        setPendingImportFiles(files);
+        setSavedQueryImportMode("upsert");
+        setSavedQueryImportPreview(null);
+        setSavedQueryImportResult(null);
+        setIsImportDialogOpen(true);
+        await previewSavedQueryImport(files, "upsert");
+    };
+
+    const previewSavedQueryImport = async (files, mode) => {
+        const formData = new FormData();
+        files.forEach((file) => formData.append("files", file));
+        formData.append("mode", mode);
+
+        setIsPreviewingSavedQueryImport(true);
+
+        try {
+            const preview = await fetchJson("/api/saved-queries/files/preview", {
+                method: "POST",
+                body: formData,
+            });
+            setSavedQueryImportPreview(preview);
+        } catch (err) {
+            console.error(err);
+            toast.error(err.message || "Failed to preview saved queries");
+        } finally {
+            setIsPreviewingSavedQueryImport(false);
+        }
+    };
+
+    const handleImportModeChange = async (mode) => {
+        setSavedQueryImportMode(mode);
+        setSavedQueryImportPreview(null);
+        setSavedQueryImportResult(null);
+        await previewSavedQueryImport(pendingImportFiles, mode);
+    };
+
+    const handleConfirmSavedQueryImport = async () => {
+        if (pendingImportFiles.length === 0) return;
+
+        const formData = new FormData();
+        pendingImportFiles.forEach((file) => formData.append("files", file));
+        formData.append("mode", savedQueryImportMode);
+
+        setIsImportingSavedQueries(true);
+        const toastId = toast.loading("Importing saved queries...");
+
+        try {
+            const summary = await fetchJson("/api/saved-queries/files/import", {
+                method: "POST",
+                body: formData,
+            });
+
+            setSavedQueryImportResult(summary);
+            loadSavedQueries();
+
+            const message = [
+                `${summary.created} created`,
+                `${summary.updated} updated`,
+                `${summary.skipped} skipped`,
+            ].join(", ");
+
+            if (summary.errors > 0) {
+                toast.warning(`Import finished: ${message}`, { id: toastId });
+            } else {
+                toast.success(`Import finished: ${message}`, { id: toastId });
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error(err.message || "Failed to import saved queries", { id: toastId });
+        } finally {
+            setIsImportingSavedQueries(false);
+        }
+    };
+
     const loadQueryIntoEditor = (sq) => {
         // Dirty State Check
         if (query.trim() && query.trim() !== sq.query.trim()) {
@@ -316,11 +535,21 @@ export default function QueryPage() {
                 selectedDb={selectedDb}
                 setSelectedDb={setSelectedDb}
                 onInsertTable={insertTableName}
+                onExportSchema={handleExportSchema}
+                isExportingSchema={isExportingSchema}
+                onExportRepository={handleExportRepository}
+                isExportingRepository={isExportingRepository}
                 // Saved Queries Props
                 savedQueries={savedQueries}
                 onDeleteQuery={handleDeleteQuery}
                 onLoadQuery={loadQueryIntoEditor}
                 onEditQuery={handleEditQuery}
+                onImportSavedQueries={handleImportSavedQueries}
+                onExportSavedQueries={handleExportSavedQueries}
+                onExportSelectedSavedQueries={handleExportSavedQueries}
+                onExportSingleSavedQuery={(sq) => handleExportSavedQueries([sq.id])}
+                isImportingSavedQueries={isImportingSavedQueries}
+                isExportingSavedQueries={isExportingSavedQueries}
                 // History Props
                 queryHistory={queryHistory}
                 onLoadHistory={loadHistoryItem}
@@ -391,13 +620,33 @@ export default function QueryPage() {
                 </AlertDialogContent>
             </AlertDialog>
 
+            <SavedQueryImportDialog
+                open={isImportDialogOpen}
+                onOpenChange={(open) => {
+                    setIsImportDialogOpen(open);
+                    if (!open) {
+                        setPendingImportFiles([]);
+                        setSavedQueryImportPreview(null);
+                        setSavedQueryImportResult(null);
+                    }
+                }}
+                files={pendingImportFiles}
+                mode={savedQueryImportMode}
+                onModeChange={handleImportModeChange}
+                preview={savedQueryImportPreview}
+                result={savedQueryImportResult}
+                isPreviewing={isPreviewingSavedQueryImport}
+                isImporting={isImportingSavedQueries}
+                onConfirm={handleConfirmSavedQueryImport}
+            />
+
             {/* Duplicate Name Alert */}
             <AlertDialog open={isDuplicateDialogOpen} onOpenChange={setIsDuplicateDialogOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle>Duplicate Query Name</AlertDialogTitle>
                         <AlertDialogDescription>
-                            A query with the name &quot;{duplicateQueryName}&quot; already exists. Please choose a different name.
+                            A query with the name &quot;{duplicateQueryName}&quot; already exists for this database. Please choose a different name.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -429,4 +678,11 @@ export default function QueryPage() {
             </AlertDialog>
         </div>
     );
+}
+
+function filenameFromContentDisposition(value) {
+    if (!value) return null;
+
+    const match = value.match(/filename="?([^";]+)"?/i);
+    return match ? match[1] : null;
 }

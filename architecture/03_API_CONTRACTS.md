@@ -59,6 +59,79 @@ Allowed column types:
 - `TIMESTAMP`
 - `JSONB`
 
+## Schema Export
+
+`POST /api/schema/export`
+
+Exports PostgreSQL schema metadata as a `.zip` for Git storage and AI-agent
+context. The export is metadata-only and does not include sample rows or table
+data.
+
+Body:
+
+```json
+{
+  "databaseName": "optional database name",
+  "schemas": ["optional schema names"],
+  "includeRowCounts": true,
+  "includeIndexes": true,
+  "includeConstraints": true,
+  "includeViews": false
+}
+```
+
+When `schemas` is omitted or empty, all non-system schemas are included.
+
+The zip contains:
+
+- `schema/README.md`
+- `schema/database.schema.json`
+- `schema/database.schema.md`
+- `schema/tables/*.md`
+- `schema/tables/*.sql`
+
+The JSON file is the canonical machine-readable schema context. Markdown and
+SQL files are generated for human and AI-agent readability.
+
+ZIP export responses use streaming DEFLATE compression.
+
+## Repository Bundle Export
+
+`POST /api/repository/export`
+
+Exports a Git-ready ZIP containing compact selected-database schema context,
+saved queries for that database, a machine-readable manifest, and query
+authoring instructions for AI agents. No table rows are included.
+
+Body:
+
+```json
+{
+  "databaseName": "required database name",
+  "schemas": ["optional schema names"],
+  "includeRowCounts": true,
+  "includeIndexes": true,
+  "includeConstraints": true,
+  "includeViews": false,
+  "includeUnassignedQueries": true
+}
+```
+
+The ZIP contains:
+
+- `README.md`
+- `AGENTS.md`
+- `manifest.json`
+- `schema/catalog.md`
+- `schema/tables/*.sql`
+- `queries/<database>/*.sql`
+- `queries/unassigned/*.sql` when saved queries have no database name
+
+The catalog provides a compact relation and foreign-key index. Per-table SQL is
+the canonical schema context for agents. `manifest.json` records the generation
+timestamp, schema fingerprint, counts, export options, and unassigned-query
+warnings. Queries assigned to other databases are excluded.
+
 ## Flexible Import
 
 `POST /api/import/flexible`
@@ -134,6 +207,59 @@ Updates a saved query.
 `DELETE /api/saved-queries?id=<id>`
 
 Deletes a saved query.
+
+`POST /api/saved-queries/files/export`
+
+Exports saved queries as a `.zip` file containing plain `.sql` files under
+`queries/`.
+
+Body:
+
+```json
+{
+  "ids": ["optional saved query ids"]
+}
+```
+
+When `ids` is omitted or empty, all saved queries are exported. Each `.sql`
+file stores saved-query metadata in leading `-- xpp:*` comments followed by the
+SQL body. The zip also includes `queries/README.md` with the file-format notes.
+
+`POST /api/saved-queries/files/preview`
+
+Previews an import without writing to the database.
+
+Multipart form fields:
+
+- `files`: one or more versioned `.sql` files or repository `.zip` files.
+- `mode`: optional import mode.
+
+Supported import modes:
+
+- `upsert`: create new queries and update matching names.
+- `create`: create new queries and skip matching names.
+- `copy`: create imported queries as copies, adding numeric suffixes when needed.
+- `replace`: replace saved queries only in database scopes represented by the
+  valid imported files.
+
+The response includes counts for created, updated, skipped, and errored files,
+plus per-file actions.
+
+`POST /api/saved-queries/files/import`
+
+Imports one or more plain `.sql` files into saved queries.
+
+Multipart form fields:
+
+- `files`: one or more `.sql` files.
+- `mode`: optional import mode. Defaults to `upsert`.
+
+The import parser requires `name` and version `1` metadata and saves the
+remaining SQL body. Current exports also write `databaseName` and `description`;
+empty values are allowed. Conflicts use database name plus query name. ZIP imports
+read only `queries/**/*.sql`, so generated schema SQL cannot be imported as a
+saved query. Imported SQL is not executed. `replace` imports are rejected when
+any selected file has a parse error.
 
 ## Backup
 
