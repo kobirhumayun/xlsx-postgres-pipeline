@@ -28,20 +28,12 @@ npm run test:query-context
 
 ## Current Validation Notes
 
-Prisma Client must exist before local production builds. In a clean local
-checkout, run:
+`npm install` and `npm ci` generate Prisma Client through the `postinstall`
+script. `npm run build` also generates it through `prebuild`, so a separate
+manual generation step is not required before building. Use
+`npx prisma generate` when an explicit generation check is useful.
 
-```bash
-npx prisma generate
-```
-
-before:
-
-```bash
-npm run build
-```
-
-The Dockerfile runs Prisma generation in the `deps` stage.
+The Dockerfile also runs Prisma generation in the `deps` stage.
 
 ## Test Scripts
 
@@ -79,5 +71,5 @@ Before shipping documentation or deployment changes:
 
 ## Known Documentation Scope
 
-This validation document describes available checks. It does not claim that the
-current lint state is clean. Treat command output as authoritative.
+This validation document describes available checks. Validation status can
+change as the implementation evolves, so treat command output as authoritative.
