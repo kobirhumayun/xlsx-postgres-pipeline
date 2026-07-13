@@ -73,6 +73,12 @@ Before writing SQL, read `manifest.json` and `schema/catalog.md`, then open only
 the relevant files under `schema/tables/` and existing queries for the target
 database.
 
+Each saved query file has two regions: a four-line `xpp` metadata block followed
+by the stored SQL body. The body includes ordinary comments and executable
+statements. Import saves the body without executing it; Run executes the entire
+body in one request. Numeric filename prefixes document intended order but do
+not schedule or execute files automatically.
+
 - Use only tables and columns present in the relevant `schema/tables/*.sql`
   files.
 - Prefer declared foreign keys when joining tables.
