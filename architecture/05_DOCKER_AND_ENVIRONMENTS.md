@@ -59,7 +59,7 @@ The production override:
 
 ## Dockerfile Stages
 
-- `base`: Node Alpine plus bash and PostgreSQL client.
+- `base`: Node 22 Alpine plus bash and PostgreSQL client.
 - `deps`: installs npm dependencies and generates Prisma Client.
 - `dev`: runs `next dev`.
 - `builder`: runs `next build`.
