@@ -73,6 +73,12 @@ Before writing SQL, read `manifest.json` and `schema/catalog.md`, then open only
 the relevant files under `schema/tables/` and existing queries for the target
 database.
 
+Each saved query file has two regions: a four-line `xpp` metadata block followed
+by the stored SQL body. The body includes ordinary comments and executable
+statements. Import saves the body without executing it; Run executes the entire
+body in one request. Numeric filename prefixes document intended order but do
+not schedule or execute files automatically.
+
 - Use only tables and columns present in the relevant `schema/tables/*.sql`
   files.
 - Prefer declared foreign keys when joining tables.
@@ -126,11 +132,14 @@ DROP TABLE IF EXISTS pg_temp.tmp_working_set;
 COMMIT;
 ```
 
-The required metadata fields are `name`, `version`, `databaseName`, and
-`description`. Empty database and description values are allowed, but all four
-metadata lines must be present. End executable SQL statements with semicolons. The generated
-bundle also contains these instructions in its own `README.md` and a concise
-`AGENTS.md`, so an AI agent can work directly from the extracted repository.
+New query files authored for the repository workflow should include `name`,
+`version`, `databaseName`, and `description`. Empty database and description
+values are allowed. The import parser requires only `name` and version `1`;
+omitted `databaseName` and `description` values are stored as `null`.
+Current exports always write all four lines. End executable SQL statements with
+semicolons. The generated bundle also contains these instructions in its own
+`README.md` and a concise `AGENTS.md`, so an AI agent can work directly from the
+extracted repository.
 
 Import accepts individual `.sql` files or a repository `.zip`. ZIP imports
 read only `queries/**/*.sql`; generated schema SQL is ignored. Import conflicts
@@ -140,7 +149,7 @@ queries in the database scopes represented by the imported files.
 ## Prerequisites
 
 - Docker and Docker Compose
-- Node.js 20+ for local development outside Docker
+- Node.js 22+ for local development outside Docker
 - PostgreSQL access through `DATABASE_URL`
 
 ## Environment
@@ -165,6 +174,15 @@ Variables from `.env.example`:
   on-screen preview.
 - `QUERY_STATEMENT_TIMEOUT_MS`: PostgreSQL statement timeout, in milliseconds,
   applied to query preview and export sessions.
+
+When the app runs directly through `npm`, Next.js loads these values from
+`.env`. Docker Compose uses `.env` for interpolation but passes only variables
+declared in each service's `environment` section. The current app service
+receives `DATABASE_URL` and `QUERY_PREVIEW_LIMIT`; the backup service receives
+`DATABASE_URL`, `BACKUP_SCHEDULE`, and `RETENTION_DAYS`; and pgAdmin receives
+its two credential variables. To use `QUERY_STATEMENT_TIMEOUT_MS`, `BACKUP_DIR`,
+`BACKUP_SERVICE_URL`, `BACKUP_SCRIPT_PATH`, or `RESTORE_SCRIPT_PATH` in a
+container, add the variable to the corresponding Compose service.
 
 ## Docker Development
 
@@ -230,11 +248,8 @@ Install dependencies:
 npm install
 ```
 
-Generate Prisma Client:
-
-```bash
-npx prisma generate
-```
+`npm install` generates Prisma Client through the project's `postinstall`
+script.
 
 Run the development server:
 
@@ -256,10 +271,17 @@ Build:
 npm run build
 ```
 
-If building from a clean local install, run Prisma generation first:
+The `prebuild` script generates Prisma Client automatically before every build.
+To generate it explicitly without building, run:
 
 ```bash
 npx prisma generate
+```
+
+Query context tests:
+
+```bash
+npm run test:query-context
 ```
 
 ## Backup And Restore

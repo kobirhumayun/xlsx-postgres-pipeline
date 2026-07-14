@@ -59,7 +59,7 @@ The production override:
 
 ## Dockerfile Stages
 
-- `base`: Node Alpine plus bash and PostgreSQL client.
+- `base`: Node 22 Alpine plus bash and PostgreSQL client.
 - `deps`: installs npm dependencies and generates Prisma Client.
 - `dev`: runs `next dev`.
 - `builder`: runs `next build`.
@@ -98,3 +98,16 @@ Optional:
 - `BACKUP_SERVICE_URL`
 - `BACKUP_SCRIPT_PATH`
 - `RESTORE_SCRIPT_PATH`
+
+When running directly through `npm`, Next.js loads application variables from
+`.env`. Docker Compose uses `.env` for interpolation and passes only variables
+declared in a service's `environment` section. In the checked-in Compose files:
+
+- `app` receives `DATABASE_URL` and `QUERY_PREVIEW_LIMIT`.
+- `backup` receives `DATABASE_URL`, `BACKUP_SCHEDULE`, and `RETENTION_DAYS`.
+- `pgadmin` receives `PGADMIN_DEFAULT_EMAIL` and
+  `PGADMIN_DEFAULT_PASSWORD`.
+
+Using `QUERY_STATEMENT_TIMEOUT_MS`, `BACKUP_DIR`, `BACKUP_SERVICE_URL`,
+`BACKUP_SCRIPT_PATH`, or `RESTORE_SCRIPT_PATH` inside a container requires
+adding the variable to the corresponding Compose service environment.

@@ -6,14 +6,19 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const backupFileRegex = /^backup_\d{8}_\d{6}\.sql\.gz$/;
-const defaultBackupDirs = ["/backups", path.join(process.cwd(), "backups")];
+const defaultBackupDirs = [
+  "/backups",
+  path.join(/* turbopackIgnore: true */ process.cwd(), "backups"),
+];
 
 function normalizeBackupDir() {
   const configured = process.env.BACKUP_DIR?.trim();
   if (configured) {
     return configured;
   }
-  return defaultBackupDirs.find((candidate) => fs.existsSync(candidate)) ?? defaultBackupDirs[0];
+  return defaultBackupDirs.find(
+    (candidate) => fs.existsSync(/* turbopackIgnore: true */ candidate)
+  ) ?? defaultBackupDirs[0];
 }
 
 export function getBackupDir() {
@@ -40,13 +45,18 @@ export function sanitizeBackupFilename(filename) {
 export async function listBackups() {
   const backupDir = getBackupDir();
   try {
-    const entries = await fsp.readdir(backupDir, { withFileTypes: true });
+    const entries = await fsp.readdir(/* turbopackIgnore: true */ backupDir, {
+      withFileTypes: true,
+    });
     const backups = await Promise.all(
       entries
         .filter((entry) => entry.isFile() && isBackupFilename(entry.name))
         .map(async (entry) => {
-          const fullPath = path.join(backupDir, entry.name);
-          const stats = await fsp.stat(fullPath);
+          const fullPath = path.join(
+            /* turbopackIgnore: true */ backupDir,
+            entry.name
+          );
+          const stats = await fsp.stat(/* turbopackIgnore: true */ fullPath);
           return {
             name: entry.name,
             size: stats.size,
@@ -71,9 +81,12 @@ export async function resolveBackupPath(filename) {
     return null;
   }
   const backupDir = getBackupDir();
-  const fullPath = path.join(backupDir, sanitized);
+  const fullPath = path.join(
+    /* turbopackIgnore: true */ backupDir,
+    sanitized
+  );
   try {
-    const stats = await fsp.stat(fullPath);
+    const stats = await fsp.stat(/* turbopackIgnore: true */ fullPath);
     if (!stats.isFile()) {
       return null;
     }
@@ -114,16 +127,23 @@ function resolveScriptPath(envVar, defaultFilename) {
   if (configured) {
     return configured;
   }
-  const preferred = path.join("/usr/local/bin", defaultFilename);
-  if (fs.existsSync(preferred)) {
+  const preferred = path.join(
+    /* turbopackIgnore: true */ "/usr/local/bin",
+    defaultFilename
+  );
+  if (fs.existsSync(/* turbopackIgnore: true */ preferred)) {
     return preferred;
   }
-  return path.join(process.cwd(), "backup", defaultFilename);
+  return path.join(
+    /* turbopackIgnore: true */ process.cwd(),
+    "backup",
+    defaultFilename
+  );
 }
 
 export async function runBackupScript() {
   const scriptPath = resolveScriptPath("BACKUP_SCRIPT_PATH", "backup.sh");
-  if (!fs.existsSync(scriptPath)) {
+  if (!fs.existsSync(/* turbopackIgnore: true */ scriptPath)) {
     throw new Error(
       "Backup script not found. Configure BACKUP_SCRIPT_PATH or install /usr/local/bin/backup.sh."
     );
@@ -146,7 +166,7 @@ export async function runBackupScript() {
 
 export async function runRestoreScript(backupPath) {
   const scriptPath = resolveScriptPath("RESTORE_SCRIPT_PATH", "restore.sh");
-  if (!fs.existsSync(scriptPath)) {
+  if (!fs.existsSync(/* turbopackIgnore: true */ scriptPath)) {
     throw new Error(
       "Restore script not found. Configure RESTORE_SCRIPT_PATH or install /usr/local/bin/restore.sh."
     );

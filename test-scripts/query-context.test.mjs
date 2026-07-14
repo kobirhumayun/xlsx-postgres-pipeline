@@ -126,7 +126,12 @@ test("repository bundle uses compact schema files and a fingerprint", () => {
     assert.match(readme, /Refresh strategy: append, truncate\/reload, upsert, replace, or none/);
     assert.match(readme, /Treat source tables as read-only/i);
     assert.match(readme, /Prompt Contract/);
+    assert.match(readme, /Each saved query file has two regions/i);
+    assert.match(readme, /Everything after the metadata block is stored as the saved query's SQL body/i);
+    assert.match(readme, /does not schedule or execute files automatically/i);
     assert.match(agents, /connections are not shared across runs/i);
+    assert.match(agents, /Use exactly four leading metadata lines in this order/i);
+    assert.match(agents, /Import saves it without execution/i);
 });
 
 test("table context emits valid identity and view clauses", () => {

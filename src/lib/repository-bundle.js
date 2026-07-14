@@ -137,6 +137,24 @@ A query file may be a single read-only query or a multi-statement pipeline step.
 
 A complete business prompt should identify the objective, input tables, matching fields, normalization rules, precedence and tie-breaking, intended output grain and columns, unmatched or rejected record handling, destination report table, refresh strategy, and required reconciliation totals. Infer only facts proven by schema or existing queries. When a required decision is missing, inspect the available context first and then ask a focused clarification question.
 
+## Saved Query File Contract
+
+Each saved query file has two regions:
+
+1. A four-line metadata block at the very beginning of the file.
+2. A SQL body containing documentation comments and executable statements.
+
+Store selected-database queries under \`queries/${databaseSlug}/<query-name>.sql\`. Files under \`queries/unassigned/\` have no database assignment and require review before use.
+
+The metadata block must be the first four lines, in this order:
+
+- \`xpp:name\`: human-readable saved-query name. When ordered steps are used, begin it with the same numeric prefix as the filename.
+- \`xpp:version\`: file-format version; use \`1\`.
+- \`xpp:databaseName\`: target database assignment; use \`${databaseName}\` for this repository.
+- \`xpp:description\`: one-line summary of the query's business outcome.
+
+Everything after the metadata block is stored as the saved query's SQL body, including ordinary SQL comments. Importing a file saves that body and never executes it. A Run action executes the entire body in one request. Numeric filename prefixes document the intended order for people and agents; the application does not schedule or execute files automatically.
+
 ## File And Execution Model
 
 - Create one file per independently executable query or pipeline step under \`queries/${databaseSlug}/\`.
@@ -177,6 +195,7 @@ A complete business prompt should identify the objective, input tables, matching
 -- xpp:databaseName: ${databaseName}
 -- xpp:description: Normalizes and matches customer orders, then refreshes the approved report table.
 
+-- The saved SQL body begins after the four-line metadata block.
 -- Purpose: State the business outcome of this executable step.
 -- Inputs: List every source, lookup, intermediate, or report table read.
 -- Output: Name the persistent report table, or say "result set only".
@@ -226,6 +245,13 @@ function repositoryAgentInstructions(databaseName, databaseSlug) {
 ## Mission
 
 Write PostgreSQL query files that purify interrelated source data and produce prompt-defined concrete report tables. Follow \`README.md\` as the complete operating contract.
+
+## Saved Query Contract
+
+- Store selected-database queries under \`queries/${databaseSlug}/<query-name>.sql\`. Files under \`queries/unassigned/\` require database-assignment review.
+- Use exactly four leading metadata lines in this order: \`xpp:name\`, \`xpp:version\`, \`xpp:databaseName\`, and \`xpp:description\`.
+- Everything after those four lines is the stored SQL body. Import saves it without execution; a Run action executes the entire body in one request.
+- Numeric filename prefixes document intended order only; the application does not schedule or execute files automatically.
 
 ## Required Process
 

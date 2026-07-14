@@ -44,6 +44,13 @@ creates, updates, copies, or replaces `SavedQuery` records depending on the
 selected import mode and does not execute the SQL. Exported zip files include
 `queries/README.md` with the file-format summary.
 
+Repository-bundle query files therefore have two regions: the four-line `xpp`
+metadata block and the stored SQL body that follows it. Ordinary SQL comments
+after the metadata belong to the body. A Run action executes that entire body in
+one request. Numeric filename prefixes communicate intended order to people and
+agents; the application does not schedule or execute repository files
+automatically.
+
 `name` and version `1` metadata are required for import. Current exports always
 write all four metadata lines; `databaseName` and `description` values can be
 empty. Import identity is the case-insensitive combination of database name and
