@@ -522,26 +522,30 @@ export default function QueryPage() {
         }
     };
 
-    const insertTableName = (fullName) => {
-        setQuery(prev => prev + ` ${fullName} `);
-    };
-
-    const insertColumnName = (columnName) => {
-        const quotedColumnName = `"${String(columnName).replaceAll('"', '""')}"`;
+    const insertTextIntoEditor = (text, editSource) => {
         const editor = sqlEditorRef.current;
 
         if (!editor) {
-            setQuery(prev => `${prev}${prev && !/\s$/.test(prev) ? " " : ""}${quotedColumnName}`);
+            setQuery(prev => `${prev}${prev && !/\s$/.test(prev) ? " " : ""}${text}`);
             return;
         }
 
         const selection = editor.getSelection();
-        editor.executeEdits("insert-result-column", [{
+        editor.executeEdits(editSource, [{
             range: selection,
-            text: quotedColumnName,
+            text,
             forceMoveMarkers: true,
         }]);
         editor.focus();
+    };
+
+    const insertTableName = (fullName) => {
+        insertTextIntoEditor(fullName, "insert-schema-table");
+    };
+
+    const insertColumnName = (columnName) => {
+        const quotedColumnName = `"${String(columnName).replaceAll('"', '""')}"`;
+        insertTextIntoEditor(quotedColumnName, "insert-result-column");
     };
 
     return (
