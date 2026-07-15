@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchJson } from "@/lib/api-client";
 import { toast } from "sonner";
 import { Sidebar } from "@/components/query/sidebar";
@@ -21,6 +21,7 @@ import {
 const destructiveQueryPattern = /^\s*(?:DROP|ALTER|TRUNCATE|DELETE|UPDATE|INSERT|CREATE)\b/i;
 
 export default function QueryPage() {
+    const sqlEditorRef = useRef(null);
     const [query, setQuery] = useState("");
     const [databaseName, setDatabaseName] = useState("");
     const [results, setResults] = useState(null);
@@ -525,6 +526,24 @@ export default function QueryPage() {
         setQuery(prev => prev + ` ${fullName} `);
     };
 
+    const insertColumnName = (columnName) => {
+        const quotedColumnName = `"${String(columnName).replaceAll('"', '""')}"`;
+        const editor = sqlEditorRef.current;
+
+        if (!editor) {
+            setQuery(prev => `${prev}${prev && !/\s$/.test(prev) ? " " : ""}${quotedColumnName}`);
+            return;
+        }
+
+        const selection = editor.getSelection();
+        editor.executeEdits("insert-result-column", [{
+            range: selection,
+            text: quotedColumnName,
+            forceMoveMarkers: true,
+        }]);
+        editor.focus();
+    };
+
     return (
         <div className="flex h-screen w-full bg-zinc-50 overflow-hidden text-zinc-900 font-sans">
             {/* Sidebar */}
@@ -584,6 +603,9 @@ export default function QueryPage() {
                             isExporting={isExporting}
                             onExport={handleExport}
                             onOpenSaveDialog={handleOpenSaveDialog}
+                            onEditorMount={(editor) => {
+                                sqlEditorRef.current = editor;
+                            }}
                             isSaveDialogOpen={isSaveDialogOpen}
                             setIsSaveDialogOpen={setIsSaveDialogOpen}
                             isSaving={isSaving}
@@ -598,6 +620,7 @@ export default function QueryPage() {
                             <ResultsDisplay
                                 results={results}
                                 loading={loading}
+                                onInsertColumn={insertColumnName}
                             />
                         </div>
                     )}
