@@ -1,8 +1,7 @@
-import { Button } from "@/components/ui/button";
-import { ChevronUp, ChevronDown, Loader2 } from "lucide-react";
+import { ChevronUp, ChevronDown, Loader2, Plus } from "lucide-react";
 import { useState, useMemo } from "react";
 
-export function ResultsDisplay({ results, loading }) {
+export function ResultsDisplay({ results, loading, onInsertColumn }) {
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
     const sortedRows = useMemo(() => {
@@ -82,7 +81,19 @@ export function ResultsDisplay({ results, loading }) {
                                             onClick={() => requestSort(field)}
                                         >
                                             <div className="flex items-center gap-1">
-                                                {field}
+                                                <span>{field}</span>
+                                                <button
+                                                    type="button"
+                                                    className="ml-1 inline-flex h-5 w-5 items-center justify-center rounded text-zinc-400 opacity-60 hover:bg-zinc-200 hover:text-zinc-900 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        onInsertColumn?.(field);
+                                                    }}
+                                                    title={`Insert ${field} into query`}
+                                                    aria-label={`Insert ${field} into query`}
+                                                >
+                                                    <Plus className="h-3.5 w-3.5" />
+                                                </button>
                                                 <div className="w-4 h-4 text-zinc-400 flex items-center justify-center">
                                                     {sortConfig.key === field ? (
                                                         sortConfig.direction === 'asc' ? <ChevronUp className="w-3.5 h-3.5 text-zinc-900" /> : <ChevronDown className="w-3.5 h-3.5 text-zinc-900" />

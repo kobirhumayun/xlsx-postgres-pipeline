@@ -13,6 +13,7 @@ export function QueryEditor({
     isExporting,
     onExport,
     onOpenSaveDialog,
+    onEditorMount,
     // Dialog Props
     isSaveDialogOpen,
     setIsSaveDialogOpen,
@@ -39,6 +40,7 @@ export function QueryEditor({
                     <SqlEditor
                         value={query}
                         onChange={setQuery}
+                        onMount={onEditorMount}
                         onRun={(e) => {
                             if (!loading && databaseName && query.trim()) {
                                 onRun(e);

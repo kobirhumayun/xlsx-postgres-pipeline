@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import Editor from "@monaco-editor/react";
 
-export function SqlEditor({ value, onChange, onRun }) {
+export function SqlEditor({ value, onChange, onRun, onMount }) {
     const editorRef = useRef(null);
     const onRunRef = useRef(onRun);
 
@@ -11,6 +11,7 @@ export function SqlEditor({ value, onChange, onRun }) {
 
     const handleEditorDidMount = (editor, monaco) => {
         editorRef.current = editor;
+        onMount?.(editor);
 
         // Register the Ctrl+Enter shortcut
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
