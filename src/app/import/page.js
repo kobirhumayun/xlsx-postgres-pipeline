@@ -323,7 +323,10 @@ export default function ImportPage() {
 
       setSummary(data.summary);
       setErrors(data.errors ?? []);
-      setStatus({ type: "success", message: "Import completed." });
+      setStatus({
+        type: "success",
+        message: ["Import completed.", ...(data.warnings ?? [])].join(" "),
+      });
     } catch (error) {
       console.error("Failed to import file", error);
       if (error.payload?.errors) {

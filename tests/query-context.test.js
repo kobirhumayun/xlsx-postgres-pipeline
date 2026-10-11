@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { repositoryBundleFiles } from "@/lib/repository-bundle.js";
 import {
   collectDatabaseSchema,
@@ -65,7 +65,7 @@ describe("PostgreSQL schema collection", () => {
         name: "orders",
         kind: "table",
         comment: "Orders",
-        estimated_rows: -2.4,
+        estimated_rows: 12.4,
         view_definition: null,
       }],
       columns: [
@@ -93,7 +93,7 @@ describe("PostgreSQL schema collection", () => {
     const table = result.schemas[0].tables[0];
     expect(table).toMatchObject({
       fullName: "public.orders",
-      estimatedRows: 0,
+      estimatedRows: 12,
       primaryKey: ["id"],
       indexes: [{ name: "orders_customer_idx", isUnique: false, isPrimary: false }],
     });
@@ -111,6 +111,99 @@ describe("PostgreSQL schema collection", () => {
     }]);
     expect(table.uniqueConstraints[0].columns).toEqual(["slug"]);
     expect(table.checkConstraints[0].columns).toEqual([]);
+  });
+});
+
+describe("schema row count fallback", () => {
+  function rowCountClient(tables, count = async () => ({ rows: [{ row_count: "29" }] })) {
+    const catalog = catalogClient({ tables });
+    return {
+      query: vi.fn(async (sql, params) => {
+        if (sql === "BEGIN READ ONLY" || sql === "ROLLBACK" || sql.includes("set_config")) {
+          return { rows: [] };
+        }
+        if (sql.startsWith("SELECT count(*)")) return count(sql);
+        return catalog.query(sql, params);
+      }),
+    };
+  }
+
+  function relation(name, estimated_rows, kind = "table") {
+    return { oid: name, schema: "public", name, kind, estimated_rows };
+  }
+
+  it("counts unknown ordinary tables while preserving valid estimates and real zeroes", async () => {
+    const client = rowCountClient([
+      relation("paid_prc_al_arafah_prev_was_process", -1),
+      relation("sub_prc_al_arafah_process", -1),
+      relation("known", 86.4),
+      relation("empty", 0),
+    ], async (sql) => ({ rows: [{ row_count: sql.includes("paid_prc") ? "29" : "30" }] }));
+    const result = await collectDatabaseSchema(client);
+    expect(result.schemas[0].tables.map(({ estimatedRows, rowCountSource }) => [estimatedRows, rowCountSource]))
+      .toEqual([[29, "count"], [30, "count"], [86, "catalog"], [0, "catalog"]]);
+    expect(client.query.mock.calls.filter(([sql]) => sql.startsWith("SELECT count(*)"))).toHaveLength(2);
+    expect(schemaCatalog(result)).toContain("public.sub_prc_al_arafah_process | table | 30 |");
+    expect(client.query.mock.calls.filter(([sql]) => sql === "ROLLBACK")).toHaveLength(2);
+    expect(client.query.mock.calls.find(([sql]) => sql.includes("set_config"))[1]).toEqual(["2000ms"]);
+  });
+
+  it.each(["57014", "42501", "42P01"])("exports unknown and cleans up after PostgreSQL error %s", async (code) => {
+    const client = rowCountClient([relation("unavailable", -1)], async () => {
+      throw Object.assign(new Error("Count unavailable"), { code });
+    });
+    const result = await collectDatabaseSchema(client);
+    const table = result.schemas[0].tables[0];
+    expect(table).toMatchObject({ estimatedRows: null, rowCountSource: "unknown" });
+    expect(schemaCatalog(result)).toContain("public.unavailable | table | unknown |");
+    expect(tableMarkdown(table)).toContain("Estimated rows: unknown");
+    const calls = client.query.mock.calls.map(([sql]) => sql);
+    expect(calls.indexOf("ROLLBACK")).toBeGreaterThan(calls.findIndex((sql) => sql.startsWith("SELECT count(*)")));
+    expect(calls.indexOf("ROLLBACK")).toBeLessThan(calls.findIndex((sql) => sql.includes("FROM pg_attribute a")));
+  });
+
+  it("propagates unexpected database failures after rolling back", async () => {
+    const client = rowCountClient([relation("broken", -1)], async () => {
+      throw Object.assign(new Error("Connection lost"), { code: "08006" });
+    });
+    await expect(collectDatabaseSchema(client)).rejects.toThrow("Connection lost");
+    expect(client.query.mock.calls.at(-1)).toEqual(["ROLLBACK"]);
+  });
+
+  it("does not count when row counts are disabled or execute unknown views and partitioned parents", async () => {
+    const disabled = rowCountClient([relation("ordinary", -1)]);
+    const result = await collectDatabaseSchema(disabled, { includeRowCounts: false });
+    expect(result.schemas[0].tables[0]).toMatchObject({ estimatedRows: null, rowCountSource: "omitted" });
+    expect(schemaCatalog(result)).not.toContain("unknown");
+    expect(tableMarkdown(result.schemas[0].tables[0])).not.toContain("Estimated rows:");
+    const otherKinds = rowCountClient([
+      relation("view", -1, "view"),
+      relation("materialized", -1, "materialized_view"),
+      relation("partitioned", -1, "partitioned_table"),
+    ]);
+    const others = await collectDatabaseSchema(otherKinds, { includeViews: true });
+    expect(others.schemas[0].tables.every((table) => table.rowCountSource === "unknown")).toBe(true);
+    for (const client of [disabled, otherKinds]) {
+      expect(client.query.mock.calls.some(([sql]) => sql === "BEGIN READ ONLY")).toBe(false);
+    }
+  });
+
+  it("quotes identifiers in the fallback and treats missing estimates as unknown", async () => {
+    const client = rowCountClient([{ ...relation('a"b', null), schema: 's"c' }]);
+    await collectDatabaseSchema(client);
+    expect(client.query).toHaveBeenCalledWith('SELECT count(*) AS row_count FROM ONLY "s""c"."a""b"');
+  });
+
+  it("stops starting counts when the shared five-second budget expires", async () => {
+    let now = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const client = rowCountClient([relation("first", -1), relation("second", -1)], async () => {
+      now = 5001;
+      throw Object.assign(new Error("Timed out"), { code: "57014" });
+    });
+    const result = await collectDatabaseSchema(client);
+    expect(result.schemas[0].tables.map((table) => table.rowCountSource)).toEqual(["unknown", "unknown"]);
+    expect(client.query.mock.calls.filter(([sql]) => sql.startsWith("SELECT count(*)"))).toHaveLength(1);
   });
 });
 

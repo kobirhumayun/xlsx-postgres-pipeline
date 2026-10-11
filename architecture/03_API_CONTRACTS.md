@@ -152,9 +152,15 @@ Success response:
     "okRows": 0,
     "errorRows": 0
   },
-  "errors": []
+  "errors": [],
+  "warnings": []
 }
 ```
+
+After a nonempty import commits, the target table's statistics are refreshed.
+If maintenance fails or PostgreSQL skips analysis, the response remains
+successful and `warnings` explains that statistics were not refreshed. The
+import page displays these warnings alongside the completion message.
 
 ## Query Run
 
