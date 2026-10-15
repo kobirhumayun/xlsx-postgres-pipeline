@@ -72,8 +72,11 @@ Behavior:
 - Rejects archives whose source or dump-client major exceeds the target server
   major, or whose dump-client major is older than the recorded source. Old
   version-18-client archives are therefore rejected on PostgreSQL 16 before
-  applying SQL. Generate a fresh version-compatible backup; upgrading the
-  client does not rewrite existing archives.
+  applying SQL. If only the dump client was too new, generate a fresh backup
+  using the source's matching client. If the source itself is newer than the
+  destination, upgrade the destination server; recreating the backup with a
+  matching client does not enable downgrades. Upgrading client tools does not
+  rewrite existing archives or upgrade the database server.
 - Supports the version combinations below, subject to extensions, schema
   features, and destination privileges. Downgrades are blocked before SQL
   writes. Source/dump/target majors outside 16–18 are also blocked; additional
@@ -107,8 +110,8 @@ Behavior:
   tables below the automatic-analysis threshold.
 - If this maintenance step fails, the script exits successfully for the
   completed data restore and writes a warning to stderr (returned as
-  `errorOutput` by the local-script API). Run `ANALYZE` for affected user tables instead of
-  repeating the restore. PostgreSQL warnings about skipped tables are also
+  `errorOutput` by the local-script API). Run `ANALYZE` for affected user tables
+  instead of repeating the restore. PostgreSQL warnings about skipped tables are also
   available on stderr. External backup services control their own maintenance.
 
 ## App API Backup Mode
@@ -132,6 +135,19 @@ Mount CA files into the app container when using `sslrootcert`. Before final
 cutover, pause source writes, take a fresh dump, restore to an empty destination,
 validate row counts and important queries, and then switch the app connection.
 Source version compatibility does not guarantee extension/permission parity.
+
+For remote-to-local restoration, reverse the source/destination overrides:
+`BACKUP_DATABASE_URL` selects the remote source and `RESTORE_DATABASE_URL`
+selects the local destination using host `db` inside Docker. Local PostgreSQL
+18 accepts supported 16/17/18 archives; local 16 cannot accept a source-17/18
+archive. For transfers in both directions, use matching server majors. An
+occupied local database still requires an explicit replacement or a separate
+empty destination. The app's selected query database does not change the
+restore destination.
+
+Local-script API executions have a ten-minute process timeout and a 1 MiB
+output limit in `src/lib/backup.js`. The statistics timeouts above apply per
+statement; they do not extend the API's overall process limit.
 
 `GET /api/backup` includes a `mode` field with either `service` or
 `local-script`.

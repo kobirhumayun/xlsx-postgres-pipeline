@@ -168,6 +168,14 @@ Variables from `.env.example`:
   The example `0 0 * * *` runs once per day at midnight.
 - `RETENTION_DAYS`: Number of days to keep generated backup files before the
   backup script removes older files.
+- `BACKUP_DATABASE_URL` and `RESTORE_DATABASE_URL`: Optional independent backup
+  source and restore destination; each defaults to `DATABASE_URL`. In Docker,
+  use `db` for the local server in these overrides, rather than `localhost`.
+- `POSTGRES_CLIENT_MAJORS`: Client versions bundled into both images; defaults
+  to `16 17 18`. Scripts automatically select tools matching the source or
+  destination server. The former `POSTGRES_CLIENT_MAJOR` setting is unused.
+- `POSTGRES_ALPINE_VERSION`: Alpine release used to build both images; defaults
+  to `3.23`. Rebuild both images after changing either build setting.
 - `BACKUP_DIR`: Optional backup directory override. If unset, the app/scripts
   use `/backups` in Docker or a local `backups` directory when available.
 - `QUERY_PREVIEW_LIMIT`: Maximum number of rows returned to the Query page for
@@ -178,13 +186,20 @@ Variables from `.env.example`:
 When the app runs directly through `npm`, Next.js loads these values from
 `.env`. Docker Compose uses `.env` for interpolation but passes only variables
 declared in each service's `environment` section. The current app service
-receives `DATABASE_URL` and `QUERY_PREVIEW_LIMIT`; the backup service receives
-`DATABASE_URL`, `BACKUP_SCHEDULE`, and `RETENTION_DAYS`; and pgAdmin receives
-its two credential variables. To use `QUERY_STATEMENT_TIMEOUT_MS`, `BACKUP_DIR`,
+receives `DATABASE_URL`, `BACKUP_DATABASE_URL`, `RESTORE_DATABASE_URL`, and
+`QUERY_PREVIEW_LIMIT`; the backup service receives those three connection
+variables, `BACKUP_SCHEDULE`, and `RETENTION_DAYS`; and pgAdmin receives its
+two credential variables. To use `QUERY_STATEMENT_TIMEOUT_MS`, `BACKUP_DIR`,
 `BACKUP_SERVICE_URL`, `BACKUP_SCRIPT_PATH`, or `RESTORE_SCRIPT_PATH` in a
 container, add the variable to the corresponding Compose service.
 
 ## Docker Development
+
+The local service runs PostgreSQL 18, bound to `127.0.0.1:5432`, and stores data
+in the `postgres18_data` volume mounted at `/var/lib/postgresql`. Existing
+PostgreSQL 16 installations must back up and restore into this new volume;
+changing the image alone does not migrate data. The old `postgres_data` volume
+is retained for rollback. Do not use `docker compose down -v` to upgrade.
 
 Run the app with the local PostgreSQL container:
 
@@ -306,6 +321,26 @@ inside containers.
 The app backup API runs local backup scripts by default. If `BACKUP_SERVICE_URL`
 is configured, the app calls that HTTP backup service instead.
 
+Local scripts support PostgreSQL 16, 17, and 18. Backups use the source server's
+`pg_dump` major and omit ownership and grants for portability. Restores use the
+destination server's `psql` major. Supported directions are 16 → 16/17/18,
+17 → 17/18, and 18 → 18; newer-to-older restores are blocked before SQL writes.
+Local PostgreSQL 18 can therefore accept remote PostgreSQL 17 or 18 backups.
+Extensions, schema features, and destination permissions still need to match.
+
+The UI displays the restore destination and requires `RESTORE` or the exact
+filename as confirmation. Default `empty` mode refuses databases containing
+user objects. Explicit `replace` mode replaces matching objects and their data;
+it does not merge rows or remove objects absent from the dump. The guard and
+dump run in one transaction so SQL failures roll back the restore.
+
+After restoration, statistics are refreshed for user tables and materialized
+views, excluding system schemas and direct extension members. A statistics
+failure produces a warning while the completed data restore remains successful;
+do not repeat a restore just to refresh statistics. See
+[Backup And Restore](architecture/07_BACKUP_AND_RESTORE.md) for TLS handling,
+version checks, and source/destination overrides.
+
 Start the backup service container before using `docker compose exec backup ...`:
 
 ```bash
@@ -322,6 +357,12 @@ Restore through the backup service container:
 
 ```bash
 docker compose --profile backup exec backup /usr/local/bin/restore.sh /backups/backup_YYYYMMDD_HHMMSS.sql.gz
+```
+
+For an intentional replacement of matching destination objects:
+
+```bash
+docker compose --profile backup exec -e RESTORE_MODE=replace backup /usr/local/bin/restore.sh /backups/backup_YYYYMMDD_HHMMSS.sql.gz
 ```
 
 On Windows Git Bash, use double slashes if path conversion causes Docker exec

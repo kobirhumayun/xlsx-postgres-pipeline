@@ -104,3 +104,9 @@ Important UI behavior:
 
 - Restore is disabled until the user types `RESTORE` or the selected filename.
 - The UI displays backup directory, file size, and backup status when available.
+- In local-script mode, the UI displays the restore destination host, port,
+  and database without credentials. Default `empty` mode refuses user objects;
+  explicit `replace` mode replaces matching objects without merging rows.
+  Changing modes clears the confirmation input.
+- Successful restore messages include script stderr, so statistics warnings
+  remain visible even when the data restore completed successfully.
