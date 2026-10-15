@@ -80,6 +80,8 @@ export default function BackupPage() {
   const [isRestoring, setIsRestoring] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [confirmationText, setConfirmationText] = useState("");
+  const [restoreMode, setRestoreMode] = useState("empty");
+  const [restoreTarget, setRestoreTarget] = useState(null);
 
   const selectedBackup = useMemo(
     () => backups.find((backup) => backup.id === selectedBackupId),
@@ -118,6 +120,7 @@ export default function BackupPage() {
         .map((backup) => normalizeBackup(backup))
         .filter(Boolean);
       setBackupDir(payload?.backupDir || "");
+      setRestoreTarget(payload?.restoreTarget ?? null);
       applyBackups(normalized);
       if (announce) {
         setStatus({
@@ -206,6 +209,7 @@ export default function BackupPage() {
         body: JSON.stringify({
           filename,
           confirmationToken: confirmationText.trim(),
+          mode: restoreMode,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -223,7 +227,7 @@ export default function BackupPage() {
         message: payload?.message || "Restore completed. Systems are back online.",
       });
       setProgress(
-        payload?.details || `Restored from ${selectedBackup?.label ?? "selected backup"}.`
+        [payload?.details || `Restored from ${selectedBackup?.label ?? "selected backup"}.`, payload?.errorOutput].filter(Boolean).join(" ")
       );
     } catch (error) {
       setStatus({ type: "error", message: "Restore request failed. Try again." });
@@ -277,6 +281,11 @@ export default function BackupPage() {
                 {backupDir && (
                   <p className="mt-2 text-xs text-zinc-400">Backup directory: {backupDir}</p>
                 )}
+                {restoreTarget && (
+                  <p className="mt-2 text-sm text-zinc-600">
+                    Destination: {restoreTarget.database} on {restoreTarget.host}:{restoreTarget.port}
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -289,6 +298,23 @@ export default function BackupPage() {
             </div>
 
             <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+              <label className="mb-3 block">
+                Restore mode
+                <select
+                  value={restoreMode}
+                  disabled={isRestoring}
+                  onChange={(event) => { setRestoreMode(event.target.value); setConfirmationText(""); }}
+                  className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-3 py-2"
+                >
+                  <option value="empty">Require an empty database</option>
+                  <option value="replace">Replace matching objects and their data</option>
+                </select>
+              </label>
+              <p className="mb-3 text-xs text-zinc-600">
+                {restoreMode === "replace"
+                  ? "Matching objects in the destination will be dropped and recreated. This does not merge data."
+                  : "Restore stops if the destination contains user objects. Use a new database for cloud migration."}
+              </p>
               <p className="font-semibold text-zinc-900">Confirmation required</p>
               <p className="mt-1 text-xs text-zinc-600">
                 Type the backup filename or enter <span className="font-semibold">RESTORE</span> to

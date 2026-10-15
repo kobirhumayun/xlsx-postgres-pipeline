@@ -96,10 +96,17 @@ Scripts:
 - `test-scripts/verify_ddl.mjs`
 - `test-scripts/verify_features.mjs`
 - `test-scripts/verify_standalone.mjs`
+- `test-scripts/verify_backup_restore.mjs`: after building the `backup` image,
+  run `node test-scripts/verify_backup_restore.mjs` with a local `DATABASE_URL`.
+  Creates isolated databases and a restricted target role, checks real dump/
+  restore portability, nonempty-target rejection, atomic rollback, version
+  rejection, and explicit replacement, then removes its fixtures. Requires
+  Docker and database/role creation permissions; refuses cloud URLs.
 - `test-scripts/verify_restore_statistics.sh`: run with
   `bash test-scripts/verify_restore_statistics.sh backup/restore.sh` in a Bash
-  environment with gzip. Uses a fake `psql` to check restore/maintenance failure
-  handling without connecting to a database.
+  environment with gzip. Uses fake `psql`/`pg_dump` executables to check URI/SSL
+  preservation, portable dump flags, version/corruption guards, and
+  restore/maintenance failure handling without connecting to a database.
 
 ## Recommended Review Checks
 

@@ -25,9 +25,23 @@ backup/backup.sh
 
 Behavior:
 
-- Uses `DATABASE_URL`.
-- Strips query parameters before passing the URL to `pg_dump`.
-- Writes a compressed SQL dump.
+- Uses `BACKUP_DATABASE_URL`, falling back to `DATABASE_URL`.
+- `backup/common.sh` removes only Prisma's `schema` URI parameter. It preserves
+  libpq options including `sslmode` and `sslrootcert`, and maps node-postgres's
+  `sslmode=no-verify` spelling to libpq's `sslmode=require` (encrypted without
+  requiring certificate validation). For verified TLS, use `verify-full` and
+  mount the provider's CA certificate at the `sslrootcert` path.
+- Passes the normalized URI explicitly as `--dbname` to enable libpq URI
+  parsing; scripts do not print connection strings.
+- Requires the `pg_dump` major version to match the source server major before
+  dumping. Both Docker images default to PostgreSQL 16 clients on Alpine 3.22;
+  build arguments `POSTGRES_CLIENT_MAJOR` and `ALPINE_VERSION` configure them.
+  Compose maps `POSTGRES_ALPINE_VERSION` to `ALPINE_VERSION`. When backing up a
+  newer cloud server, choose its client major and an Alpine release providing
+  that package, then rebuild both images.
+- Writes a compressed plain SQL dump with `--clean --if-exists --no-owner
+  --no-acl`. Ownership and grants are omitted for portability across local and
+  managed-service roles. A temporary file is renamed only after the dump succeeds.
 - Removes old backup files based on `RETENTION_DAYS`.
 
 ## Restore Script
@@ -41,12 +55,29 @@ backup/restore.sh
 Behavior:
 
 - Requires a backup file path.
-- Uses `DATABASE_URL`.
-- Strips query parameters before passing the URL to `psql`.
-- Pipes decompressed SQL into `psql`.
-- Uses `psql -X -v ON_ERROR_STOP=1`; SQL errors stop the restore and prevent
-  the subsequent statistics refresh. Earlier statements may already have
-  committed because the restore is not wrapped in one transaction.
+- Uses `RESTORE_DATABASE_URL`, falling back to `DATABASE_URL`, with the same
+  URI normalization and explicit `--dbname` handling as backups. Explicit override
+  URLs in Docker must use a reachable hostname (such as `db`, not localhost).
+- Fully decompresses into a private temporary file before database writes;
+  requires plain SQL `pg_dump` version headers. The file is deleted on exit.
+- Rejects archives whose source or dump-client major exceeds the target server
+  major, or whose dump-client major exceeds the installed `psql` major. Old
+  version-18-client archives are therefore rejected on PostgreSQL 16 before
+  applying SQL. Generate a fresh version-compatible backup; upgrading the
+  client does not rewrite existing archives.
+- `RESTORE_MODE=empty` (default) checks for user relations, routines, schemas,
+  and types before applying SQL. Use an empty staging database for migration.
+  Extension dependencies are excluded where directly marked in the catalogs;
+  managed-service extensions and permissions still require validation.
+- `RESTORE_MODE=replace` explicitly allows the dump's DROP statements to replace
+  matching destination objects and data. Objects absent from the dump are not
+  removed. No mode merges or reconciles existing rows. New portable backups
+  omit source ownership/grants; legacy archives may still contain them.
+- Uses `psql -X -q -v ON_ERROR_STOP=1 --single-transaction -c <guard> -f <file>`.
+  The guard and dump share a transaction; SQL failures roll back the restore
+  and prevent subsequent statistics refresh. This supports the generated
+  database-level dumps, not arbitrary scripts containing transaction control,
+  database creation, or connection changes.
 - After a successful restore, runs database-wide `ANALYZE` with a 60-second
   statement timeout and a five-second lock timeout. This populates statistics
   even for small tables below the automatic-analysis threshold.
@@ -64,6 +95,19 @@ The app API uses two modes:
 2. Otherwise, run local backup or restore scripts from the app container/process.
 
 The current Compose files do not set `BACKUP_SERVICE_URL` by default.
+
+The local-script UI shows the destination host, port, and database (without
+credentials). It defaults to empty mode; changing modes clears confirmation.
+The API forwards `mode` to an external backup service when configured; that
+service must implement equivalent preflight, atomicity, and mode semantics.
+
+For a local-to-cloud migration, set `BACKUP_DATABASE_URL` to the local source
+and `RESTORE_DATABASE_URL` to a new empty cloud database. Keep `DATABASE_URL`
+pointing to the app's current database until the restored data is verified.
+Mount CA files into the app container when using `sslrootcert`. Before final
+cutover, pause source writes, take a fresh dump, restore to an empty destination,
+validate row counts and important queries, and then switch the app connection.
+Source version compatibility does not guarantee extension/permission parity.
 
 `GET /api/backup` includes a `mode` field with either `service` or
 `local-script`.

@@ -1,6 +1,8 @@
-FROM node:22-alpine AS base
+ARG ALPINE_VERSION=3.22
+FROM node:22-alpine${ALPINE_VERSION} AS base
+ARG POSTGRES_CLIENT_MAJOR=16
 WORKDIR /app
-RUN apk add --no-cache bash postgresql-client
+RUN apk add --no-cache bash ca-certificates postgresql${POSTGRES_CLIENT_MAJOR}-client
 
 FROM base AS deps
 COPY package.json package-lock.json ./
@@ -30,13 +32,14 @@ COPY --from=builder /app/prisma ./prisma
 COPY prisma.config.mjs ./
 COPY --from=builder /app/backup/backup.sh /usr/local/bin/backup.sh
 COPY --from=builder /app/backup/restore.sh /usr/local/bin/restore.sh
+COPY --from=builder /app/backup/common.sh /usr/local/bin/common.sh
 
 
 
 
 COPY entrypoint.sh ./
 RUN sed -i 's/\r$//' entrypoint.sh
-RUN sed -i 's/\r$//' /usr/local/bin/backup.sh /usr/local/bin/restore.sh
+RUN sed -i 's/\r$//' /usr/local/bin/backup.sh /usr/local/bin/restore.sh /usr/local/bin/common.sh
 RUN chmod +x entrypoint.sh
 RUN chmod +x /usr/local/bin/backup.sh /usr/local/bin/restore.sh
 

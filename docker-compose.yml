@@ -3,10 +3,15 @@ services:
     build:
       context: .
       target: runner
+      args:
+        ALPINE_VERSION: ${POSTGRES_ALPINE_VERSION:-3.22}
+        POSTGRES_CLIENT_MAJOR: ${POSTGRES_CLIENT_MAJOR:-16}
     ports:
       - "3000:3000"
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      BACKUP_DATABASE_URL: ${BACKUP_DATABASE_URL:-}
+      RESTORE_DATABASE_URL: ${RESTORE_DATABASE_URL:-}
       QUERY_PREVIEW_LIMIT: ${QUERY_PREVIEW_LIMIT:-1000}
     volumes:
       - ./backups:/backups
@@ -35,10 +40,15 @@ services:
   backup:
     build:
       context: ./backup
+      args:
+        ALPINE_VERSION: ${POSTGRES_ALPINE_VERSION:-3.22}
+        POSTGRES_CLIENT_MAJOR: ${POSTGRES_CLIENT_MAJOR:-16}
     container_name: backup_service
     profiles: [ "tools", "backup" ]
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      BACKUP_DATABASE_URL: ${BACKUP_DATABASE_URL:-}
+      RESTORE_DATABASE_URL: ${RESTORE_DATABASE_URL:-}
       BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 0 * * *} # Daily at midnight
       RETENTION_DAYS: ${RETENTION_DAYS:-7}
     volumes:
