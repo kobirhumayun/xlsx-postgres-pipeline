@@ -113,6 +113,10 @@ Optional:
 - `PGADMIN_DEFAULT_PASSWORD`
 - `BACKUP_SCHEDULE`
 - `RETENTION_DAYS`
+- `BACKUP_DATABASE_URL`
+- `RESTORE_DATABASE_URL`
+- `POSTGRES_CLIENT_MAJORS` (build setting)
+- `POSTGRES_ALPINE_VERSION` (build setting)
 - `BACKUP_DIR`
 - `BACKUP_SERVICE_URL`
 - `BACKUP_SCRIPT_PATH`
@@ -122,8 +126,10 @@ When running directly through `npm`, Next.js loads application variables from
 `.env`. Docker Compose uses `.env` for interpolation and passes only variables
 declared in a service's `environment` section. In the checked-in Compose files:
 
-- `app` receives `DATABASE_URL` and `QUERY_PREVIEW_LIMIT`.
-- `backup` receives `DATABASE_URL`, `BACKUP_SCHEDULE`, and `RETENTION_DAYS`.
+- `app` receives `DATABASE_URL`, `BACKUP_DATABASE_URL`, `RESTORE_DATABASE_URL`,
+  and `QUERY_PREVIEW_LIMIT`.
+- `backup` receives `DATABASE_URL`, `BACKUP_DATABASE_URL`,
+  `RESTORE_DATABASE_URL`, `BACKUP_SCHEDULE`, and `RETENTION_DAYS`.
 - `pgadmin` receives `PGADMIN_DEFAULT_EMAIL` and
   `PGADMIN_DEFAULT_PASSWORD`.
 

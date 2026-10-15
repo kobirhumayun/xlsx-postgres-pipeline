@@ -92,6 +92,13 @@ The export can include:
   the per-relation catalog estimate; views and partitioned parents are not
   counted. The fallback never runs `ANALYZE` or changes table data.
 
+PostgreSQL's `pg_class.reltuples = -1` means an estimate is unavailable, rather
+than zero rows. This can occur after loading data before statistics are
+collected. The bounded fallback uses the fixed code constants
+`ROW_COUNT_TIMEOUT_MS = 2000` and `ROW_COUNT_BUDGET_MS = 5000`; they are not
+environment settings. Refreshing statistics after imports and restores makes
+catalog estimates available without requiring longer export-time counts.
+
 The export does not include table data or sample rows.
 
 Repository bundles use a compact `schema/catalog.md` plus one context DDL file

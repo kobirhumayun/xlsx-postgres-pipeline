@@ -101,7 +101,8 @@ Scripts:
   `.env` or existing database. Starts isolated official PostgreSQL 16/17/18
   containers without published ports; checks all six same-version/forward
   combinations using a restricted target role, version selection, sequences,
-  enum/schema/FK/index/view/function/data/statistics, rollback/replacement,
+  enum/schema/FK/index/view/function/data/statistics, quoted table names,
+  materialized-view statistics, absence of permission warnings, rollback/replacement,
   and 18→16 downgrade rejection. Label-verified containers, anonymous volumes,
   network, and temporary archives are removed afterward. Requires Docker and
   network access to pull the images. After building the app image, add `--app`
