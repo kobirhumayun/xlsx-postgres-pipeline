@@ -1,8 +1,13 @@
-ARG ALPINE_VERSION=3.22
+ARG ALPINE_VERSION=3.23
 FROM node:22-alpine${ALPINE_VERSION} AS base
-ARG POSTGRES_CLIENT_MAJOR=16
+ARG POSTGRES_CLIENT_MAJORS="16 17 18"
 WORKDIR /app
-RUN apk add --no-cache bash ca-certificates postgresql${POSTGRES_CLIENT_MAJOR}-client
+RUN set -eu; clients=""; \
+    for major in $POSTGRES_CLIENT_MAJORS; do \
+        case "$major" in 16|17|18) ;; *) echo "Unsupported client major: $major" >&2; exit 1 ;; esac; \
+        clients="$clients postgresql${major}-client"; \
+    done; \
+    apk add --no-cache bash ca-certificates $clients
 
 FROM base AS deps
 COPY package.json package-lock.json ./

@@ -33,12 +33,18 @@ Behavior:
   mount the provider's CA certificate at the `sslrootcert` path.
 - Passes the normalized URI explicitly as `--dbname` to enable libpq URI
   parsing; scripts do not print connection strings.
-- Requires the `pg_dump` major version to match the source server major before
-  dumping. Both Docker images default to PostgreSQL 16 clients on Alpine 3.22;
-  build arguments `POSTGRES_CLIENT_MAJOR` and `ALPINE_VERSION` configure them.
-  Compose maps `POSTGRES_ALPINE_VERSION` to `ALPINE_VERSION`. When backing up a
-  newer cloud server, choose its client major and an Alpine release providing
-  that package, then rebuild both images.
+- Detects the source major using `SHOW server_version_num` and automatically
+  selects that major's `pg_dump`. Supported source/target majors are 16, 17,
+  and 18. Both Docker images bundle all three on Alpine 3.23. Build arguments
+  `POSTGRES_CLIENT_MAJORS` (default `16 17 18`) and `ALPINE_VERSION` configure
+  installation; Compose maps `POSTGRES_ALPINE_VERSION` to `ALPINE_VERSION`.
+  The former singular `POSTGRES_CLIENT_MAJOR` setting is no longer used.
+- `backup/common.sh` probes with the newest available supported `psql`, then
+  resolves exact binaries under `/usr/libexec/postgresql<major>` (Alpine) or
+  `/usr/lib/postgresql/<major>/bin` (Debian). `PG_CLIENT_ROOT` optionally supplies
+  `<root>/<major>/bin` instead. A matching executable on PATH is a fallback for
+  native installations. Missing/mismatched binaries and unsupported majors
+  fail before the dump. No tools are downloaded at runtime.
 - Writes a compressed plain SQL dump with `--clean --if-exists --no-owner
   --no-acl`. Ownership and grants are omitted for portability across local and
   managed-service roles. A temporary file is renamed only after the dump succeeds.
@@ -60,11 +66,25 @@ Behavior:
   URLs in Docker must use a reachable hostname (such as `db`, not localhost).
 - Fully decompresses into a private temporary file before database writes;
   requires plain SQL `pg_dump` version headers. The file is deleted on exit.
+- Detects the target major and automatically selects that major's `psql` for
+  restore and subsequent `ANALYZE`. Version selection preserves the configured
+  URI/TLS options and never switches the destination database.
 - Rejects archives whose source or dump-client major exceeds the target server
-  major, or whose dump-client major exceeds the installed `psql` major. Old
+  major, or whose dump-client major is older than the recorded source. Old
   version-18-client archives are therefore rejected on PostgreSQL 16 before
   applying SQL. Generate a fresh version-compatible backup; upgrading the
   client does not rewrite existing archives.
+- Supports the version combinations below, subject to extensions, schema
+  features, and destination privileges. Downgrades are blocked before SQL
+  writes. Source/dump/target majors outside 16–18 are also blocked; additional
+  releases require intentional packaging and validation.
+
+  | Source server | Selected `pg_dump` | Destination servers | Selected `psql` |
+  | --- | --- | --- | --- |
+  | 16.x | 16.x | 16.x, 17.x, 18.x | Destination major |
+  | 17.x | 17.x | 17.x, 18.x | Destination major |
+  | 18.x | 18.x | 18.x | 18.x |
+
 - `RESTORE_MODE=empty` (default) checks for user relations, routines, schemas,
   and types before applying SQL. Use an empty staging database for migration.
   Extension dependencies are excluded where directly marked in the catalogs;
@@ -78,12 +98,16 @@ Behavior:
   and prevent subsequent statistics refresh. This supports the generated
   database-level dumps, not arbitrary scripts containing transaction control,
   database creation, or connection changes.
-- After a successful restore, runs database-wide `ANALYZE` with a 60-second
-  statement timeout and a five-second lock timeout. This populates statistics
-  even for small tables below the automatic-analysis threshold.
+- After a successful restore, uses a catalog query and `psql` `\gexec` to run
+  safely quoted `ANALYZE` statements for user tables, partitioned tables, and
+  materialized views. System schemas (`pg_*`, `information_schema`) and direct
+  extension members are excluded, avoiding protected-catalog permission
+  warnings on managed servers. Each statement has a 60-second statement timeout
+  and a five-second lock timeout. This populates statistics even for small
+  tables below the automatic-analysis threshold.
 - If this maintenance step fails, the script exits successfully for the
   completed data restore and writes a warning to stderr (returned as
-  `errorOutput` by the local-script API). Run `ANALYZE` separately instead of
+  `errorOutput` by the local-script API). Run `ANALYZE` for affected user tables instead of
   repeating the restore. PostgreSQL warnings about skipped tables are also
   available on stderr. External backup services control their own maintenance.
 

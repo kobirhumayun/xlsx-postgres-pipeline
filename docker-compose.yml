@@ -4,8 +4,8 @@ services:
       context: .
       target: runner
       args:
-        ALPINE_VERSION: ${POSTGRES_ALPINE_VERSION:-3.22}
-        POSTGRES_CLIENT_MAJOR: ${POSTGRES_CLIENT_MAJOR:-16}
+        ALPINE_VERSION: ${POSTGRES_ALPINE_VERSION:-3.23}
+        POSTGRES_CLIENT_MAJORS: ${POSTGRES_CLIENT_MAJORS:-16 17 18}
     ports:
       - "3000:3000"
     environment:
@@ -17,16 +17,16 @@ services:
       - ./backups:/backups
 
   db:
-    image: postgres:16
+    image: postgres:18
     profiles: [ "localdb" ]
     environment:
       POSTGRES_DB: xlsx_pipeline
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres18_data:/var/lib/postgresql
 
   pgadmin:
     image: dpage/pgadmin4
@@ -41,8 +41,8 @@ services:
     build:
       context: ./backup
       args:
-        ALPINE_VERSION: ${POSTGRES_ALPINE_VERSION:-3.22}
-        POSTGRES_CLIENT_MAJOR: ${POSTGRES_CLIENT_MAJOR:-16}
+        ALPINE_VERSION: ${POSTGRES_ALPINE_VERSION:-3.23}
+        POSTGRES_CLIENT_MAJORS: ${POSTGRES_CLIENT_MAJORS:-16 17 18}
     container_name: backup_service
     profiles: [ "tools", "backup" ]
     environment:
@@ -55,4 +55,6 @@ services:
       - ./backups:/backups
 
 volumes:
+  # Retained for rollback of installations previously using PostgreSQL 16.
   postgres_data:
+  postgres18_data:
