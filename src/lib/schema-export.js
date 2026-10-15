@@ -1,4 +1,6 @@
 const SYSTEM_SCHEMAS = ["information_schema", "pg_catalog"];
+const ROW_COUNT_TIMEOUT_MS = 2000;
+const ROW_COUNT_BUDGET_MS = 5000;
 
 export async function collectDatabaseSchema(client, options = {}) {
     const includeViews = options.includeViews === true;
@@ -9,6 +11,7 @@ export async function collectDatabaseSchema(client, options = {}) {
     const databaseResult = await client.query("SELECT current_database() AS name");
     const databaseName = databaseResult.rows[0]?.name || options.databaseName || "database";
     const tables = await fetchTables(client, { schemas, includeViews, includeRowCounts });
+    await resolveRowCounts(client, tables, includeRowCounts);
     const relationOids = tables.map((table) => table.oid);
 
     if (tables.length === 0) {
@@ -69,7 +72,8 @@ export async function collectDatabaseSchema(client, options = {}) {
             fullName: `${table.schema}.${table.name}`,
             kind: table.kind,
             comment: table.comment,
-            estimatedRows: includeRowCounts ? Math.max(0, Math.round(table.estimatedRows || 0)) : null,
+            estimatedRows: table.estimatedRows,
+            rowCountSource: table.rowCountSource,
             columns: enrichedColumns,
             primaryKey: primaryKeyColumns,
             primaryKeyConstraint: primaryKey || null,
@@ -238,7 +242,7 @@ export function schemaCatalog(schema) {
     const tables = schema.schemas.flatMap((entry) => entry.tables);
 
     for (const table of tables) {
-        lines.push(`| ${escapeMarkdownCell(table.fullName)} | ${table.kind} | ${table.estimatedRows ?? ""} | ${escapeMarkdownCell(table.primaryKey.join(", "))} | ${escapeMarkdownCell(table.comment || "")} |`);
+        lines.push(`| ${escapeMarkdownCell(table.fullName)} | ${table.kind} | ${table.estimatedRows ?? (table.rowCountSource === "unknown" ? "unknown" : "")} | ${escapeMarkdownCell(table.primaryKey.join(", "))} | ${escapeMarkdownCell(table.comment || "")} |`);
     }
 
     lines.push("", "## Relationships", "");
@@ -312,6 +316,8 @@ function appendTableMarkdown(lines, table, headingLevel) {
     lines.push(`Kind: ${table.kind}`);
     if (table.estimatedRows !== null) {
         lines.push(`Estimated rows: ${table.estimatedRows}`);
+    } else if (table.rowCountSource === "unknown") {
+        lines.push("Estimated rows: unknown");
     }
     lines.push("");
     lines.push("| Column | Type | Nullable | Default | Notes |");
@@ -363,6 +369,50 @@ function appendTableMarkdown(lines, table, headingLevel) {
             lines.push(`- ${check.name}: ${check.definition}`);
         }
         lines.push("");
+    }
+}
+
+async function resolveRowCounts(client, tables, includeRowCounts) {
+    const deadline = Date.now() + ROW_COUNT_BUDGET_MS;
+
+    for (const table of tables) {
+        const estimate = table.estimatedRows;
+        table.estimatedRows = null;
+        table.rowCountSource = includeRowCounts ? "unknown" : "omitted";
+        if (!includeRowCounts) continue;
+
+        if (Number.isFinite(estimate) && estimate >= 0) {
+            table.estimatedRows = Math.round(estimate);
+            table.rowCountSource = "catalog";
+            continue;
+        }
+
+        const remainingMs = deadline - Date.now();
+        if (table.kind !== "table" || remainingMs <= 0) continue;
+
+        // These callers supply a dedicated, idle client. A separate read-only
+        // transaction bounds each fallback and restores session settings even
+        // when PostgreSQL cancels the count (including a wait for a table lock).
+        await client.query("BEGIN READ ONLY");
+        try {
+            await client.query("SELECT set_config('statement_timeout', $1, true)", [
+                `${Math.min(ROW_COUNT_TIMEOUT_MS, remainingMs)}ms`,
+            ]);
+            const result = await client.query(
+                `SELECT count(*) AS row_count FROM ONLY ${quoteIdent(table.schema)}.${quoteIdent(table.name)}`
+            );
+            const count = Number(result.rows[0]?.row_count);
+            if (Number.isSafeInteger(count) && count >= 0) {
+                table.estimatedRows = count;
+                table.rowCountSource = "count";
+            }
+        } catch (error) {
+            // Missing privileges, a concurrently dropped table, or a timeout
+            // must not misrepresent an unavailable count as an empty table.
+            if (!["57014", "42501", "42P01"].includes(error.code)) throw error;
+        } finally {
+            await client.query("ROLLBACK");
+        }
     }
 }
 

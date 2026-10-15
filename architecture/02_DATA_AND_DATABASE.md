@@ -82,7 +82,15 @@ The export can include:
 - Primary keys, foreign keys, unique constraints, and checks.
 - Index definitions.
 - Optional views and materialized views.
-- Optional estimated row counts from PostgreSQL catalog statistics.
+- Optional estimated row counts from PostgreSQL catalog statistics. When an
+  ordinary table has an unknown estimate, `src/lib/schema-export.js` falls back
+  to a read-only `COUNT(*) FROM ONLY` with a two-second statement timeout and a
+  five-second shared fallback budget per export. Valid estimates (including
+  zero) are preserved. Unavailable counts render as `unknown`, with
+  `estimatedRows: null` in JSON. `rowCountSource` records `catalog`, `count`,
+  `unknown`, or `omitted`. Fallback counts exclude inherited child rows, matching
+  the per-relation catalog estimate; views and partitioned parents are not
+  counted. The fallback never runs `ANALYZE` or changes table data.
 
 The export does not include table data or sample rows.
 
@@ -108,6 +116,12 @@ Rules:
 - Extra headers are rejected.
 - Rows are inserted with parameterized values.
 - Table and column identifiers are quoted before SQL construction.
+- After committing a nonempty import, `src/lib/database-statistics.js` runs
+  targeted `ANALYZE` in a separate transaction, with a 30-second statement
+  timeout and a five-second lock timeout. Transaction-local settings are
+  restored on commit or rollback. Maintenance failures or PostgreSQL warnings
+  leave the import successful and appear in the API `warnings` array and the
+  import completion message. Empty or failed imports do not run `ANALYZE`.
 
 ## Table Creation
 

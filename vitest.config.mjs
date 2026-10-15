@@ -21,6 +21,7 @@ export default defineConfig({
       include: [
         "src/lib/api-client.js",
         "src/lib/backup.js",
+        "src/lib/database-statistics.js",
         "src/lib/ingest.js",
         "src/lib/saved-query-files.js",
         "src/lib/saved-query-import.js",

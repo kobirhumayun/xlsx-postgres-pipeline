@@ -96,6 +96,10 @@ Scripts:
 - `test-scripts/verify_ddl.mjs`
 - `test-scripts/verify_features.mjs`
 - `test-scripts/verify_standalone.mjs`
+- `test-scripts/verify_restore_statistics.sh`: run with
+  `bash test-scripts/verify_restore_statistics.sh backup/restore.sh` in a Bash
+  environment with gzip. Uses a fake `psql` to check restore/maintenance failure
+  handling without connecting to a database.
 
 ## Recommended Review Checks
 

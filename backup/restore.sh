@@ -25,11 +25,15 @@ echo "[$(date)] Starting restore from $BACKUP_FILE..."
 # For robustness, we might want to terminate connections or drop/create schema.
 # But simply piping to psql is the standard basic approach for data restoration.
 CLEAN_DB_URL="${DATABASE_URL%\?*}"
-gunzip -c "$BACKUP_FILE" | psql "$CLEAN_DB_URL"
+gunzip -c "$BACKUP_FILE" | psql -X -v ON_ERROR_STOP=1 "$CLEAN_DB_URL"
 
-if [ $? -eq 0 ]; then
-    echo "[$(date)] Restore completed successfully."
+# The data is already restored. Refresh planner statistics, including small
+# tables that may never cross the automatic-analysis threshold. Bound the
+# maintenance step and report its failure separately from the restored data.
+echo "[$(date)] Refreshing database statistics..."
+if PGOPTIONS="${PGOPTIONS:+$PGOPTIONS }-c statement_timeout=60000 -c lock_timeout=5000" \
+    psql -X -v ON_ERROR_STOP=1 "$CLEAN_DB_URL" -c 'ANALYZE;'; then
+    echo "[$(date)] Restore completed successfully; statistics refresh finished."
 else
-    echo "[$(date)] Restore failed."
-    exit 1
+    echo "[$(date)] WARNING: Data restore completed, but statistics refresh failed. Run ANALYZE separately; do not repeat the restore just to refresh statistics." >&2
 fi

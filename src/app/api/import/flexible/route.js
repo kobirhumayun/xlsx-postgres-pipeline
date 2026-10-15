@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 import { z } from "zod";
 import { getDbPool } from "@/lib/db";
 import { toTrimmedString, parseValue } from "@/lib/ingest";
+import { refreshTableStatistics } from "@/lib/database-statistics";
 
 // Reusing some helper logic, but keeping it simple for raw SQL approach
 // Since we are inserting into ANY table, we can't strongly type against Prisma schema here easily.
@@ -314,7 +315,12 @@ export async function POST(request) {
 
         if (transactionStarted) {
             await client.query("COMMIT");
+            transactionStarted = false;
         }
+
+        const statisticsWarning = okRows > 0
+            ? await refreshTableStatistics(client, tableSchema, tableBaseName)
+            : null;
 
         return Response.json({
             summary: {
@@ -323,6 +329,7 @@ export async function POST(request) {
                 errorRows,
             },
             errors: [], // No errors if success
+            warnings: statisticsWarning ? [statisticsWarning] : [],
         });
 
     } catch (error) {

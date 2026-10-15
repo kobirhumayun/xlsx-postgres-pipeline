@@ -44,6 +44,17 @@ Behavior:
 - Uses `DATABASE_URL`.
 - Strips query parameters before passing the URL to `psql`.
 - Pipes decompressed SQL into `psql`.
+- Uses `psql -X -v ON_ERROR_STOP=1`; SQL errors stop the restore and prevent
+  the subsequent statistics refresh. Earlier statements may already have
+  committed because the restore is not wrapped in one transaction.
+- After a successful restore, runs database-wide `ANALYZE` with a 60-second
+  statement timeout and a five-second lock timeout. This populates statistics
+  even for small tables below the automatic-analysis threshold.
+- If this maintenance step fails, the script exits successfully for the
+  completed data restore and writes a warning to stderr (returned as
+  `errorOutput` by the local-script API). Run `ANALYZE` separately instead of
+  repeating the restore. PostgreSQL warnings about skipped tables are also
+  available on stderr. External backup services control their own maintenance.
 
 ## App API Backup Mode
 
