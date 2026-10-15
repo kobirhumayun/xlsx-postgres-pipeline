@@ -96,6 +96,17 @@ Scripts:
 - `test-scripts/verify_ddl.mjs`
 - `test-scripts/verify_features.mjs`
 - `test-scripts/verify_standalone.mjs`
+- `test-scripts/verify_backup_restore_versions.mjs`: after building the `backup`
+  image, run `node test-scripts/verify_backup_restore_versions.mjs`. Uses no
+  `.env` or existing database. Starts isolated official PostgreSQL 16/17/18
+  containers without published ports; checks all six same-version/forward
+  combinations using a restricted target role, version selection, sequences,
+  enum/schema/FK/index/view/function/data/statistics, rollback/replacement,
+  and 18→16 downgrade rejection. Label-verified containers, anonymous volumes,
+  network, and temporary archives are removed afterward. Requires Docker and
+  network access to pull the images. After building the app image, add `--app`
+  to also test Prisma migrations/startup and real HTTP backup/restore against
+  an isolated PostgreSQL 18 database.
 - `test-scripts/verify_backup_restore.mjs`: after building the `backup` image,
   run `node test-scripts/verify_backup_restore.mjs` with a local `DATABASE_URL`.
   Creates isolated databases and a restricted target role, checks real dump/
@@ -105,7 +116,8 @@ Scripts:
 - `test-scripts/verify_restore_statistics.sh`: run with
   `bash test-scripts/verify_restore_statistics.sh backup/restore.sh` in a Bash
   environment with gzip. Uses fake `psql`/`pg_dump` executables to check URI/SSL
-  preservation, portable dump flags, version/corruption guards, and
+  preservation, portable dump flags, 16/17/18 selection, missing/unsupported
+  clients and versions, corruption guards, and
   restore/maintenance failure handling without connecting to a database.
 
 ## Recommended Review Checks

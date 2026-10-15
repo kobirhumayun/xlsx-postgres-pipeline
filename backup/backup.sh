@@ -3,12 +3,11 @@ set -e
 set -o pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 configure_connection "${BACKUP_DATABASE_URL:-${DATABASE_URL:-}}"
+select_probe_client
 SOURCE_MAJOR=$(server_major)
-DUMP_MAJOR=$(client_major pg_dump)
-if [[ "$DUMP_MAJOR" != "$SOURCE_MAJOR" ]]; then
-    echo "Backup blocked: pg_dump major $DUMP_MAJOR does not match source server major $SOURCE_MAJOR. Install matching PostgreSQL client tools." >&2
-    exit 1
-fi
+require_supported_major "$SOURCE_MAJOR" source
+DUMP_BIN=$(require_client pg_dump "$SOURCE_MAJOR")
+echo "Using pg_dump $SOURCE_MAJOR for PostgreSQL source $SOURCE_MAJOR."
 
 # Configuration
 BACKUP_DIR="${BACKUP_DIR:-/backups}"
@@ -25,7 +24,7 @@ mkdir -p "$BACKUP_DIR"
 # the restore mode's target check. Stage the gzip so failed dumps are not listed.
 PARTIAL_FILE=$(mktemp "$BACKUP_DIR/.backup-partial.XXXXXX")
 trap 'rm -f "$PARTIAL_FILE"' EXIT
-if pg_dump --clean --if-exists --no-owner --no-acl --dbname="$PGDATABASE" | gzip > "$PARTIAL_FILE"; then
+if "$DUMP_BIN" --clean --if-exists --no-owner --no-acl --dbname="$PGDATABASE" | gzip > "$PARTIAL_FILE"; then
     mv "$PARTIAL_FILE" "$BACKUP_FILE"
     echo "[$(date)] Backup completed successfully: $BACKUP_FILE"
 else

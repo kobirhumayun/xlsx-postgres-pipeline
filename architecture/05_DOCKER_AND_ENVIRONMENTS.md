@@ -1,10 +1,12 @@
 # Docker And Environments
 
 Backup/restore clients are installed by both Dockerfiles using
-`POSTGRES_CLIENT_MAJOR` (default `16`) and `ALPINE_VERSION` (default `3.22`).
-Compose reads `POSTGRES_CLIENT_MAJOR` and `POSTGRES_ALPINE_VERSION` for these
-build arguments. Rebuild both `app` and `backup` after changing them; the Alpine
-release must provide the chosen client package. `BACKUP_DATABASE_URL` and
+`POSTGRES_CLIENT_MAJORS` (default `16 17 18`) and `ALPINE_VERSION` (default `3.23`).
+Compose reads `POSTGRES_CLIENT_MAJORS` and `POSTGRES_ALPINE_VERSION` for these
+build arguments. The former singular `POSTGRES_CLIENT_MAJOR` is unused. Scripts
+automatically choose the source's `pg_dump` and target's `psql` from the installed
+versions. Rebuild both `app` and `backup` after changing build settings; the Alpine
+release must provide all selected client packages. `BACKUP_DATABASE_URL` and
 `RESTORE_DATABASE_URL` optionally select independent source/destination
 connections, defaulting to `DATABASE_URL`. See `07_BACKUP_AND_RESTORE.md` for
 SSL options, certificate mounts, and migration behavior.
@@ -22,9 +24,17 @@ The project uses three Compose files:
 Base services:
 
 - `app`: Next.js application.
-- `db`: PostgreSQL 16, behind the `localdb` profile.
+- `db`: PostgreSQL 18, behind the `localdb` profile. Host access binds to
+  `127.0.0.1:5432`; Compose services connect to `db:5432`.
 - `pgadmin`: optional pgAdmin, behind the `tools` profile.
 - `backup`: optional backup container, behind the `tools` and `backup` profiles.
+
+The local database uses the `postgres18_data` volume mounted at
+`/var/lib/postgresql`, as required by the PostgreSQL 18 image. The old
+`postgres_data` volume declaration is retained for PostgreSQL 16 rollback;
+the PostgreSQL 18 service never mounts it. Existing PostgreSQL 16 installations
+must back up and restore their databases into the new volume. Changing the
+image does not migrate old data, and `docker compose down -v` removes volumes.
 
 ## Development
 

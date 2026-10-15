@@ -5,30 +5,38 @@ set -euo pipefail
 RESTORE_SCRIPT=$(realpath "$1")
 TEST_DIR=$(mktemp -d)
 trap 'rm -rf "$TEST_DIR"' EXIT
-mkdir "$TEST_DIR/bin"
+export PG_CLIENT_ROOT="$TEST_DIR/clients"
+for major in 16 17 18; do mkdir -p "$PG_CLIENT_ROOT/$major/bin"; done
 printf '%s\n' '-- Dumped from database version 16.14' '-- Dumped by pg_dump version 16.15' 'SELECT 1;' > "$TEST_DIR/fixture.sql"
 gzip -c "$TEST_DIR/fixture.sql" > "$TEST_DIR/fixture.sql.gz"
-cat > "$TEST_DIR/bin/psql" <<'STUB'
+cat > "$TEST_DIR/psql" <<'STUB'
 #!/bin/bash
 set -eu
-if [[ "$*" == --version ]]; then echo 'psql (PostgreSQL) 16.15'; exit; fi
-printf '%s | %s | %s\n' "$*" "${PGOPTIONS:-}" "$PGDATABASE" >> "$TRACE_FILE"
-if [[ "$*" == *'SHOW server_version_num;'* ]]; then echo 160014; exit; fi
-if [[ "$*" == *"ANALYZE;"* ]]; then
+major=$(basename "$(dirname "$(dirname "$0")")")
+if [[ "$*" == --version ]]; then echo "psql (PostgreSQL) $major.99"; exit; fi
+printf 'psql%s %s | %s | %s\n' "$major" "$*" "${PGOPTIONS:-}" "$PGDATABASE" >> "$TRACE_FILE"
+if [[ "$*" == *'SHOW server_version_num;'* ]]; then echo "$((${SERVER_MAJOR:-16} * 10000))"; exit; fi
+if [[ "$*" == *'-f - '* ]]; then
+    plan=$(cat)
+    printf '%s\n' "$plan" >> "$TRACE_FILE"
+    [[ "$plan" == *"format('ANALYZE %I.%I;'"* ]]
+    [[ "$plan" == *"n.nspname !~ '^pg_'"* ]]
+    [[ "$plan" == *"d.deptype = 'e'"* ]]
+    [[ "$plan" == *'\gexec'* ]]
     if [[ "$TEST_MODE" == analyze-failure ]]; then exit 1; fi
 else
     if [[ "$TEST_MODE" == restore-failure ]]; then exit 1; fi
 fi
 STUB
-chmod +x "$TEST_DIR/bin/psql"
-export PATH="$TEST_DIR/bin:$PATH"
+chmod +x "$TEST_DIR/psql"
+for major in 16 17 18; do cp "$TEST_DIR/psql" "$PG_CLIENT_ROOT/$major/bin/psql"; done
 export DATABASE_URL='postgresql://test.invalid/test?schema=public'
 export TRACE_FILE="$TEST_DIR/trace"
 export TEST_MODE=success
 bash "$RESTORE_SCRIPT" "$TEST_DIR/fixture.sql.gz" > "$TEST_DIR/output" 2>&1
 grep -q -- '--single-transaction' "$TRACE_FILE"
 grep -q 'postgresql://test.invalid/test$' "$TRACE_FILE"
-grep -q 'ANALYZE;' "$TRACE_FILE"
+grep -Fq 'ANALYZE %I.%I;' "$TRACE_FILE"
 grep -q 'statement_timeout=60000 -c lock_timeout=5000' "$TRACE_FILE"
 grep -q 'statistics refresh finished' "$TEST_DIR/output"
 
@@ -38,7 +46,7 @@ if bash "$RESTORE_SCRIPT" "$TEST_DIR/fixture.sql.gz" > "$TEST_DIR/output" 2>&1; 
     echo 'Failed restore unexpectedly succeeded' >&2
     exit 1
 fi
-if grep -q 'ANALYZE;' "$TRACE_FILE"; then
+if grep -Fq 'ANALYZE %I.%I;' "$TRACE_FILE"; then
     echo 'Statistics refreshed after a failed restore' >&2
     exit 1
 fi
@@ -73,14 +81,16 @@ if bash "$RESTORE_SCRIPT" "$TEST_DIR/corrupt.sql.gz" > "$TEST_DIR/output" 2>&1; 
 test ! -s "$TRACE_FILE"
 
 # A real backup command must use portable flags and the independent source URI.
-cat > "$TEST_DIR/bin/pg_dump" <<'STUB'
+cat > "$TEST_DIR/pg_dump" <<'STUB'
 #!/bin/bash
 set -eu
-if [[ "$*" == --version ]]; then echo "pg_dump (PostgreSQL) ${DUMP_VERSION:-16}.15"; exit; fi
-printf '%s | %s\n' "$*" "$PGDATABASE" >> "$TRACE_FILE"
-cat "$DUMP_FIXTURE"
+major=$(basename "$(dirname "$(dirname "$0")")")
+if [[ "$*" == --version ]]; then echo "pg_dump (PostgreSQL) ${DUMP_VERSION:-$major}.99"; exit; fi
+printf 'dump%s %s | %s\n' "$major" "$*" "$PGDATABASE" >> "$TRACE_FILE"
+sed -E "s/version 16\./version $major./" "$DUMP_FIXTURE"
 STUB
-chmod +x "$TEST_DIR/bin/pg_dump"
+chmod +x "$TEST_DIR/pg_dump"
+for major in 16 17 18; do cp "$TEST_DIR/pg_dump" "$PG_CLIENT_ROOT/$major/bin/pg_dump"; done
 export DUMP_FIXTURE="$TEST_DIR/fixture.sql"
 export BACKUP_DATABASE_URL='postgresql://test.invalid/source?sslmode=require&schema=public'
 export BACKUP_DIR="$TEST_DIR/backups"
@@ -92,6 +102,34 @@ gzip -t "$BACKUP_DIR"/backup_*.sql.gz
 export DUMP_VERSION=18
 : > "$TRACE_FILE"
 if bash "$(dirname "$RESTORE_SCRIPT")/backup.sh" > "$TEST_DIR/output" 2>&1; then exit 1; fi
-grep -q 'does not match source server' "$TEST_DIR/output"
+grep -q 'Required PostgreSQL 16 pg_dump client is missing or has the wrong version' "$TEST_DIR/output"
 if grep -q -- '--no-owner' "$TRACE_FILE"; then exit 1; fi
-echo 'Backup/restore checks passed: URI/SSL preservation, portable flags, version/corruption guards, atomic command, maintenance handling.'
+unset DUMP_VERSION
+
+# Installed clients are selected by the server major, not PATH/default wrappers.
+for major in 16 17 18; do
+    export SERVER_MAJOR="$major" BACKUP_DIR="$TEST_DIR/backup-$major"
+    : > "$TRACE_FILE"
+    bash "$(dirname "$RESTORE_SCRIPT")/backup.sh" > "$TEST_DIR/output" 2>&1
+    grep -q "^dump$major .*--no-owner" "$TRACE_FILE"
+    bash "$RESTORE_SCRIPT" "$TEST_DIR/fixture.sql.gz" > "$TEST_DIR/output" 2>&1
+    grep -q "^psql$major .*--single-transaction" "$TRACE_FILE"
+done
+
+# No matching target client, unsupported server, and no probe clients fail closed.
+export SERVER_MAJOR=17
+mv "$PG_CLIENT_ROOT/17/bin/psql" "$PG_CLIENT_ROOT/17/bin/psql.off"
+: > "$TRACE_FILE"
+if bash "$RESTORE_SCRIPT" "$TEST_DIR/fixture.sql.gz" > "$TEST_DIR/output" 2>&1; then exit 1; fi
+grep -q 'Required PostgreSQL 17 psql client is missing' "$TEST_DIR/output"
+if grep -q -- '--single-transaction' "$TRACE_FILE"; then exit 1; fi
+export SERVER_MAJOR=19
+: > "$TRACE_FILE"
+if bash "$(dirname "$RESTORE_SCRIPT")/backup.sh" > "$TEST_DIR/output" 2>&1; then exit 1; fi
+grep -q 'Unsupported source PostgreSQL major 19' "$TEST_DIR/output"
+export PG_CLIENT_ROOT="$TEST_DIR/empty-clients"
+: > "$TRACE_FILE"
+if bash "$RESTORE_SCRIPT" "$TEST_DIR/fixture.sql.gz" > "$TEST_DIR/output" 2>&1; then exit 1; fi
+grep -q 'No supported psql client found' "$TEST_DIR/output"
+test ! -s "$TRACE_FILE"
+echo 'Backup/restore checks passed: 16/17/18 client selection, missing/unsupported versions, URI/SSL, portability, and failure handling.'

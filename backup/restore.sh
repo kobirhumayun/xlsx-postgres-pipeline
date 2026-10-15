@@ -37,12 +37,17 @@ if [[ ! "$SOURCE_MAJOR" =~ ^[0-9]+$ || ! "$DUMP_MAJOR" =~ ^[0-9]+$ ]]; then
     exit 1
 fi
 configure_connection "${RESTORE_DATABASE_URL:-${DATABASE_URL:-}}"
+select_probe_client
 TARGET_MAJOR=$(server_major)
-PSQL_MAJOR=$(client_major psql)
-if (( SOURCE_MAJOR > TARGET_MAJOR || DUMP_MAJOR > TARGET_MAJOR || DUMP_MAJOR > PSQL_MAJOR )); then
-    echo "Restore blocked: source major $SOURCE_MAJOR, dump client major $DUMP_MAJOR, target major $TARGET_MAJOR, psql major $PSQL_MAJOR are incompatible. Create a new backup with client tools matching the source; do not remove SQL errors from the archive." >&2
+require_supported_major "$SOURCE_MAJOR" source
+require_supported_major "$DUMP_MAJOR" dump-client
+require_supported_major "$TARGET_MAJOR" target
+if (( SOURCE_MAJOR > TARGET_MAJOR || DUMP_MAJOR > TARGET_MAJOR || DUMP_MAJOR < SOURCE_MAJOR )); then
+    echo "Restore blocked: source major $SOURCE_MAJOR, dump client major $DUMP_MAJOR, target major $TARGET_MAJOR are incompatible. Downgrades are not supported. Create a new backup with client tools matching the source; do not remove SQL errors from the archive." >&2
     exit 1
 fi
+PSQL_BIN=$(require_client psql "$TARGET_MAJOR")
+echo "Using psql $TARGET_MAJOR for PostgreSQL target $TARGET_MAJOR (source $SOURCE_MAJOR, dump client $DUMP_MAJOR)."
 
 GUARD='SELECT 1;'
 if [[ "$RESTORE_MODE" == empty ]]; then
@@ -76,11 +81,24 @@ fi
 pg_psql -X -q -v ON_ERROR_STOP=1 --single-transaction -c "$GUARD" -f "$SQL_FILE"
 
 # The data is already restored. Refresh planner statistics, including small
-# tables that may never cross the automatic-analysis threshold. Bound the
-# maintenance step and report its failure separately from the restored data.
+# tables that may never cross the automatic-analysis threshold. Skip system
+# catalogs and extension-owned relations; managed roles cannot analyze them.
+# Bound each statement and report maintenance failures separately from data.
 echo "[$(date)] Refreshing database statistics..."
 if PGOPTIONS="${PGOPTIONS:+$PGOPTIONS }-c statement_timeout=60000 -c lock_timeout=5000" \
-    pg_psql -X -q -v ON_ERROR_STOP=1 -c 'ANALYZE;'; then
+    pg_psql -X -q -v ON_ERROR_STOP=1 -f - <<'SQL'
+SELECT format('ANALYZE %I.%I;', n.nspname, c.relname)
+FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r', 'p', 'm')
+  AND n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'
+  AND NOT EXISTS (
+      SELECT 1 FROM pg_depend d
+      WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e'
+  )
+ORDER BY n.nspname, c.relname
+\gexec
+SQL
+then
     echo "[$(date)] Restore completed successfully; statistics refresh finished."
 else
     echo "[$(date)] WARNING: Data restore completed, but statistics refresh failed. Run ANALYZE separately; do not repeat the restore just to refresh statistics." >&2
