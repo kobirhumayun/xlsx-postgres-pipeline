@@ -1,5 +1,14 @@
 # Docker And Environments
 
+Backup/restore clients are installed by both Dockerfiles using
+`POSTGRES_CLIENT_MAJOR` (default `16`) and `ALPINE_VERSION` (default `3.22`).
+Compose reads `POSTGRES_CLIENT_MAJOR` and `POSTGRES_ALPINE_VERSION` for these
+build arguments. Rebuild both `app` and `backup` after changing them; the Alpine
+release must provide the chosen client package. `BACKUP_DATABASE_URL` and
+`RESTORE_DATABASE_URL` optionally select independent source/destination
+connections, defaulting to `DATABASE_URL`. See `07_BACKUP_AND_RESTORE.md` for
+SSL options, certificate mounts, and migration behavior.
+
 ## Compose Files
 
 The project uses three Compose files:

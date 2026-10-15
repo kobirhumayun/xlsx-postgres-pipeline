@@ -273,7 +273,9 @@ any selected file has a parse error.
 
 Lists known backup files.
 
-Response includes `mode`, either `service` or `local-script`.
+Response includes `mode`, either `service` or `local-script`. Local-script
+responses also include `restoreTarget` with `host`, `port`, and `database`
+(or `null` for an invalid/unconfigured URI); credentials are never returned.
 
 `POST /api/backup`
 
@@ -288,8 +290,15 @@ Body:
 ```json
 {
   "filename": "backup_YYYYMMDD_HHMMSS.sql.gz",
-  "confirmationToken": "RESTORE"
+  "confirmationToken": "RESTORE",
+  "mode": "empty"
 }
 ```
 
 The confirmation token can be `RESTORE` or the exact backup filename.
+`mode` defaults to `empty`, rejecting a destination containing user objects.
+Explicit `replace` mode allows replacement of matching objects and their data.
+Other modes return HTTP 400. Version and archive checks run before SQL writes;
+the local SQL restore runs in one transaction. Failures include the script's
+diagnostic message in `message`. External services receive `mode` and are
+responsible for implementing equivalent behavior.

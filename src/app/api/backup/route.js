@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   callBackupService,
   getBackupRuntimeMode,
+  getRestoreTarget,
   listBackups,
   runBackupScript,
   shouldUseBackupService,
@@ -17,7 +18,7 @@ export async function GET() {
     }
 
     const { backupDir, backups } = await listBackups();
-    return NextResponse.json({ mode: getBackupRuntimeMode(), backupDir, backups });
+    return NextResponse.json({ mode: getBackupRuntimeMode(), backupDir, backups, restoreTarget: getRestoreTarget() });
   } catch (error) {
     console.error("Failed to list backups:", error);
     return NextResponse.json(

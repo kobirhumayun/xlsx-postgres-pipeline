@@ -29,6 +29,10 @@ export async function POST(request) {
 
   const confirmationToken =
     typeof body?.confirmationToken === "string" ? body.confirmationToken.trim() : "";
+  const mode = body?.mode ?? "empty";
+  if (!["empty", "replace"].includes(mode)) {
+    return NextResponse.json({ success: false, error: "mode must be empty or replace." }, { status: 400 });
+  }
   if (!confirmationToken) {
     return NextResponse.json(
       {
@@ -75,7 +79,7 @@ export async function POST(request) {
       const payload = await callBackupService("/restore", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename, confirmationToken }),
+        body: JSON.stringify({ filename, confirmationToken, mode }),
       });
       return NextResponse.json({
         success: payload?.success ?? true,
@@ -84,7 +88,7 @@ export async function POST(request) {
       });
     }
 
-    const result = await runRestoreScript(resolved.fullPath);
+    const result = await runRestoreScript(resolved.fullPath, { mode });
     return NextResponse.json({
       success: true,
       message: "Restore completed successfully.",
@@ -98,7 +102,7 @@ export async function POST(request) {
       {
         success: false,
         error: "Failed to restore backup.",
-        message: "Restore failed. check logs.",
+        message: error.stderr?.trim() || "Restore failed. Check the diagnostic details.",
         details: error.message,
         debug: error.stderr || error.stdout,
       },

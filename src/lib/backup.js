@@ -107,6 +107,15 @@ export function getBackupRuntimeMode() {
   return shouldUseBackupService() ? "service" : "local-script";
 }
 
+export function getRestoreTarget() {
+  try {
+    const url = new URL(process.env.RESTORE_DATABASE_URL || process.env.DATABASE_URL);
+    return { host: url.hostname, port: url.port || "5432", database: decodeURIComponent(url.pathname.slice(1)) };
+  } catch {
+    return null;
+  }
+}
+
 export async function callBackupService(pathname, options = {}) {
   const baseUrl = process.env.BACKUP_SERVICE_URL?.replace(/\/$/, "");
   if (!baseUrl) {
@@ -164,7 +173,8 @@ export async function runBackupScript() {
   return { stdout, stderr };
 }
 
-export async function runRestoreScript(backupPath) {
+export async function runRestoreScript(backupPath, { mode = "empty" } = {}) {
+  if (!["empty", "replace"].includes(mode)) throw new Error("Invalid restore mode.");
   const scriptPath = resolveScriptPath("RESTORE_SCRIPT_PATH", "restore.sh");
   if (!fs.existsSync(/* turbopackIgnore: true */ scriptPath)) {
     throw new Error(
@@ -180,6 +190,7 @@ export async function runRestoreScript(backupPath) {
     env: {
       ...process.env,
       BACKUP_DIR: backupDir,
+      RESTORE_MODE: mode,
     },
   });
   return { stdout, stderr };

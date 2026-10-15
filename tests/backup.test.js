@@ -6,6 +6,7 @@ import {
   callBackupService,
   getBackupDir,
   getBackupRuntimeMode,
+  getRestoreTarget,
   isBackupFilename,
   listBackups,
   resolveBackupPath,
@@ -88,6 +89,20 @@ describe("backup file safety", () => {
 });
 
 describe("backup execution mode", () => {
+  it("exposes only the restore destination, never credentials or connection options", () => {
+    vi.stubEnv("DATABASE_URL", "postgresql://source:secret@local/source");
+    vi.stubEnv("RESTORE_DATABASE_URL", "postgresql://cloud:private@cloud.example:18565/staging?sslmode=verify-full");
+    expect(getRestoreTarget()).toEqual({ host: "cloud.example", port: "18565", database: "staging" });
+    vi.stubEnv("RESTORE_DATABASE_URL", "");
+    expect(getRestoreTarget()).toEqual({ host: "local", port: "5432", database: "source" });
+    vi.stubEnv("DATABASE_URL", "invalid");
+    expect(getRestoreTarget()).toBeNull();
+    vi.unstubAllEnvs();
+  });
+
+  it("rejects unsupported restore modes", async () => {
+    await expect(runRestoreScript("file.sql.gz", { mode: "merge" })).rejects.toThrow("Invalid restore mode");
+  });
   it("switches modes based on BACKUP_SERVICE_URL", () => {
     expect(shouldUseBackupService()).toBe(false);
     expect(getBackupRuntimeMode()).toBe("local-script");

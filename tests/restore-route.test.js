@@ -80,7 +80,7 @@ describe("restore API safety contract", () => {
         confirmationToken,
       })));
       expect(response).toMatchObject({ status: 200, body: { success: true, output: "restored" } });
-      expect(backup.runRestoreScript).toHaveBeenCalledWith(fullPath);
+      expect(backup.runRestoreScript).toHaveBeenCalledWith(fullPath, { mode: "empty" });
     },
   );
 
@@ -112,5 +112,19 @@ describe("restore API safety contract", () => {
     })));
     expect(response.status).toBe(500);
     expect(response.body).toMatchObject({ details: "psql failed", debug: "connection refused" });
+  });
+
+  it("rejects invalid modes before running a restore", async () => {
+    const response = await result(await POST(request({ filename: "backup_20260101_000000.sql.gz", confirmationToken: "RESTORE", mode: "merge" })));
+    expect(response.status).toBe(400);
+    expect(backup.runRestoreScript).not.toHaveBeenCalled();
+  });
+
+  it("passes explicit replacement mode to the local script", async () => {
+    backup.resolveBackupPath.mockResolvedValue({ filename: "backup_20260101_000000.sql.gz", fullPath: "/backups/file.sql.gz" });
+    backup.runRestoreScript.mockResolvedValue({ stdout: "restored", stderr: "" });
+    const response = await result(await POST(request({ filename: "backup_20260101_000000.sql.gz", confirmationToken: "RESTORE", mode: "replace" })));
+    expect(response.status).toBe(200);
+    expect(backup.runRestoreScript).toHaveBeenCalledWith("/backups/file.sql.gz", { mode: "replace" });
   });
 });
